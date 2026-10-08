@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Dictaphone IA</title>
+  <meta name="theme-color" content="#101418">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Dictaphone IA">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <link rel="icon" href="icon-192.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>Dictaphone IA <small>prototype <span id="version"></span></small></h1>
+  <p class="hint">Test de faisabilité. Tout est traité sur ce téléphone. Utilisez uniquement des enregistrements fictifs.</p>
+</header>
+
+<main>
+  <details id="prev-wrap" hidden>
+    <summary>Journal de la session précédente (utile après un plantage)</summary>
+    <pre id="prev-log"></pre>
+  </details>
+
+  <section>
+    <h2>1. Diagnostic du téléphone</h2>
+    <button id="btn-diag">Lancer le diagnostic</button>
+    <pre id="diag"></pre>
+  </section>
+
+  <section>
+    <h2>2. Audio</h2>
+    <div class="row">
+      <button id="btn-rec" class="primary">Enregistrer</button>
+      <button id="btn-stop" disabled>Arrêter</button>
+    </div>
+    <div class="meter"><div id="level"></div></div>
+    <p id="rec-status" class="status">Prêt.</p>
+    <label class="file">Ou importer un fichier audio
+      <input id="file" type="file" accept="audio/*,.wav,.m4a,.mp3,.aac,.ogg,.flac">
+    </label>
+    <progress id="imp-bar" max="1" value="0" hidden></progress>
+    <h3>Enregistrements sur ce téléphone</h3>
+    <div class="row">
+      <select id="sessions"></select>
+      <button id="btn-del">Supprimer</button>
+    </div>
+    <p id="sess-info" class="status"></p>
+  </section>
+
+  <section>
+    <h2>3. Transcription (Whisper)</h2>
+    <label>Modèle
+      <select id="stt-model">
+        <option value="onnx-community/whisper-tiny">Whisper tiny (rapide, moins précis)</option>
+        <option value="onnx-community/whisper-base" selected>Whisper base</option>
+        <option value="onnx-community/whisper-small">Whisper small (meilleur, plus lourd)</option>
+      </select>
+    </label>
+    <label>Moteur de calcul
+      <select id="stt-device">
+        <option value="webgpu">WebGPU (rapide, si disponible)</option>
+        <option value="wasm">WASM (lent, compatible partout)</option>
+      </select>
+    </label>
+    <div class="row">
+      <button id="btn-stt" class="primary" disabled>Transcrire</button>
+      <button id="btn-stt-stop" disabled>Pause</button>
+    </div>
+    <progress id="stt-bar" max="1" value="0"></progress>
+    <p id="stt-status" class="status"></p>
+    <textarea id="transcript" rows="10" readonly placeholder="La transcription apparaîtra ici."></textarea>
+    <button id="btn-dl-tr" disabled>Enregistrer la transcription (.txt)</button>
+  </section>
+
+  <section>
+    <h2>4. Compte rendu (IA locale)</h2>
+    <label>Modèle
+      <select id="llm-model">
+        <option value="Qwen2.5-1.5B-Instruct-q4f16_1-MLC" selected>Qwen2.5 1,5 Md (Apache 2.0) – recommandé</option>
+        <option value="Qwen2.5-1.5B-Instruct-q4f32_1-MLC">Qwen2.5 1,5 Md – variante compatible (plus lourde)</option>
+        <option value="Llama-3.2-1B-Instruct-q4f16_1-MLC">Llama 3.2 1 Md (licence Llama)</option>
+        <option value="Llama-3.2-3B-Instruct-q4f16_1-MLC">Llama 3.2 3 Md (licence Llama, risque mémoire)</option>
+        <option value="Qwen2.5-3B-Instruct-q4f16_1-MLC">Qwen2.5 3 Md (licence recherche : test seulement)</option>
+      </select>
+    </label>
+    <label>Taille d'un bloc de transcription (caractères)
+      <input id="blocksize" type="number" value="5000" min="1500" max="8000" step="500">
+    </label>
+    <div class="row">
+      <button id="btn-llm" class="primary" disabled>Générer le compte rendu</button>
+      <button id="btn-llm-stop" disabled>Annuler</button>
+    </div>
+    <progress id="llm-bar" max="1" value="0"></progress>
+    <p id="llm-status" class="status"></p>
+    <textarea id="summary" rows="14" readonly placeholder="Le compte rendu apparaîtra ici."></textarea>
+    <button id="btn-dl-sum" disabled>Enregistrer le compte rendu (.txt)</button>
+  </section>
+
+  <section>
+    <h2>5. Rapport de mesures</h2>
+    <p class="hint">Après vos tests, appuyez sur « Générer », puis copiez le texte et envoyez-le-moi.</p>
+    <button id="btn-report">Générer le rapport</button>
+    <textarea id="report" rows="8" readonly></textarea>
+    <h3>Journal</h3>
+    <pre id="log"></pre>
+  </section>
+</main>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
