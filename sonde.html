@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Sonde Whisper</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>Sonde Whisper <small>outil de diagnostic</small></h1>
+  <p class="hint">Teste un à un des réglages de Whisper. Si la page devient blanche, rouvrez-la : la sonde indique à quelle étape ça a planté. Données fictives uniquement (un son généré).</p>
+  <p><a href="./">← Retour à l'application</a></p>
+</header>
+<main>
+  <section id="crash" hidden></section>
+  <section>
+    <h2>Téléphone</h2>
+    <pre id="env"></pre>
+  </section>
+  <section>
+    <h2>Tests (dans l'ordre)</h2>
+    <p class="hint">Branchez l'iPhone, restez en Wi-Fi, gardez l'écran allumé et cette page au premier plan. Lancez un test à la fois.</p>
+    <div id="presets"></div>
+    <p id="status" class="status"></p>
+    <progress id="bar" max="1" value="0"></progress>
+  </section>
+  <section>
+    <h2>Résultats</h2>
+    <pre id="results">Aucun test pour l'instant.</pre>
+    <button id="copy">Copier le rapport</button>
+    <button id="reset">Effacer les résultats</button>
+    <textarea id="report" rows="6" readonly></textarea>
+  </section>
+</main>
+<script type="module" src="sonde.js"></script>
+</body>
+</html>

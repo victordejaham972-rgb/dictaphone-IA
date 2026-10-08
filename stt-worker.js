@@ -13,10 +13,14 @@ self.onmessage = async (e) => {
       const t0 = performance.now();
       asr = await pipeline('automatic-speech-recognition', m.model, {
         device: m.device,
-        dtype: m.device === 'webgpu' ? { encoder_model: 'fp32', decoder_model_merged: 'q4' } : 'q8',
+        dtype: m.dtype || (m.device === 'webgpu' ? { encoder_model: 'fp32', decoder_model_merged: 'q4' } : 'q8'),
         progress_callback: (p) => self.postMessage({ type: 'progress', p }),
       });
       self.postMessage({ type: 'loaded', ms: performance.now() - t0 });
+    } else if (m.type === 'dispose') {
+      if (asr && asr.dispose) await asr.dispose();
+      asr = null;
+      self.postMessage({ type: 'disposed' });
     } else if (m.type === 'run') {
       const t0 = performance.now();
       // return_timestamps : Whisper indique le début de chaque phrase, ce qui permet de se positionner dans l'audio
