@@ -2,7 +2,7 @@
 import * as DB from './db.js';
 import { ChunkWriter, Recorder, importFile, buildWavBlob, SR, CHUNK_SEC } from './audio.js';
 
-const VERSION = '0.2.1';
+const VERSION = '0.2.2';
 // Lecteur simplifié : export, sauvegarde, marque-pages, vitesse et ±10 s sont masqués (attribut "hidden" dans index.html).
 // Leur code est conservé. Ce réglage ne commande que le bouton d'export du fichier d'origine.
 const SHOW_EXTRAS = false;
@@ -15,21 +15,45 @@ const fmtT = (s) => { s = Math.floor(s); return `${pad(Math.floor(s / 3600))}:${
 const fmtMin = (ms) => (ms / 60000).toFixed(1) + ' min';
 
 // ---------- Journal (conservé même si la page plante) ----------
-let prevLog = [];
-try { prevLog = JSON.parse(localStorage.getItem('dlog') || '[]'); } catch {}
+// On garde les 4 dernières sessions : un plantage suivi de plusieurs rechargements ne perd plus les preuves.
+const SESS_KEY = 'dlog_sessions';
+let allSessions = [];
+try { allSessions = JSON.parse(localStorage.getItem(SESS_KEY) || '[]'); } catch {}
+const prevSessions = allSessions.slice(-3);
 const logLines = [];
+allSessions.push({ start: new Date().toLocaleString('fr-FR'), lines: logLines });
+allSessions = allSessions.slice(-4);
 function log(msg) {
   logLines.push(`${new Date().toLocaleTimeString('fr-FR')} ${msg}`);
   if (logLines.length > 300) logLines.shift();
   $('log').textContent = logLines.join('\n');
-  try { localStorage.setItem('dlog', JSON.stringify(logLines.slice(-200))); } catch {}
+  try { localStorage.setItem(SESS_KEY, JSON.stringify(allSessions.map((s) => ({ start: s.start, lines: s.lines.slice(-150) })))); } catch {}
 }
 window.addEventListener('error', (e) => log('ERREUR: ' + e.message));
 window.addEventListener('unhandledrejection', (e) => log('ERREUR: ' + ((e.reason && e.reason.message) || e.reason)));
-document.addEventListener('visibilitychange', () => log('Page ' + (document.hidden ? 'masquée (écran verrouillé ou autre appli)' : 'de nouveau visible')));
+document.addEventListener('visibilitychange', () => log('Page ' + (document.hidden ? 'MASQUÉE (écran verrouillé ou autre appli)' : 'de nouveau visible')));
+
+// Repère persistant : écrit AVANT chaque étape sensible. Après un écran blanc, il dit où ça s'est arrêté.
+const MARK_KEY = 'app_marker';
+function mark(step, extra = {}) { try { localStorage.setItem(MARK_KEY, JSON.stringify({ step, ts: Date.now(), hidden: document.hidden, ...extra })); } catch {} }
+function clearMark() { try { localStorage.removeItem(MARK_KEY); } catch {} }
 
 $('version').textContent = 'v' + VERSION;
-if (prevLog.length) { $('prev-log').textContent = prevLog.join('\n'); $('prev-wrap').hidden = false; }
+{
+  const txt = prevSessions.filter((s) => s.lines.length).map((s) => `===== Session du ${s.start} =====\n${s.lines.join('\n')}`).join('\n\n');
+  if (txt) { $('prev-log').textContent = txt; $('prev-wrap').hidden = false; }
+  let mk = null;
+  try { mk = JSON.parse(localStorage.getItem(MARK_KEY) || 'null'); } catch {}
+  if (mk) {
+    const ago = Math.round((Date.now() - mk.ts) / 1000);
+    const c = $('crash');
+    c.hidden = false;
+    c.innerHTML = '<h2 class="bad">Interruption détectée</h2><p></p>';
+    c.querySelector('p').textContent = `La session précédente s'est arrêtée (plantage, écran blanc ou fermeture) pendant : « ${mk.step} ». Dernier repère il y a ${ago} s ; page ${mk.hidden ? 'MASQUÉE (écran verrouillé ou autre appli)' : 'visible'} à ce moment. Les phrases déjà transcrites sont conservées : choisissez l'enregistrement puis « Transcrire » pour reprendre.`;
+    log(`INTERRUPTION DÉTECTÉE : ${mk.step} (il y a ${ago} s, page ${mk.hidden ? 'masquée' : 'visible'})`);
+    clearMark();
+  }
+}
 
 const metrics = []; // mesures pour le rapport
 const addMetric = (m) => { metrics.push(m); log('MESURE ' + JSON.stringify(m)); };
@@ -227,11 +251,12 @@ $('file').onchange = async () => {
 };
 
 // ---------- Utilitaires worker ----------
-function makeRpc(worker, onProgress) {
+function makeRpc(worker, onProgress, onTick) {
   let pending = null;
   worker.onmessage = (e) => {
     const m = e.data;
     if (m.type === 'progress') { onProgress && onProgress(m.p); return; }
+    if (m.type === 'tick') { onTick && onTick(m.steps); return; }
     const p = pending; pending = null;
     if (!p) return;
     m.type === 'error' ? p.rej(new Error(m.message)) : p.res(m);
@@ -242,6 +267,8 @@ function makeRpc(worker, onProgress) {
 
 // ---------- Transcription ----------
 let sttWorker = null;
+function stopWorker() { if (sttWorker) { sttWorker.terminate(); sttWorker = null; } }
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const HALLU = /sous-titr|merci d'avoir regard|abonnez-vous/i; // phrases inventées classiques de Whisper sur du bruit
 
 $('btn-stt-stop').onclick = () => { state.stopStt = true; $('stt-status').textContent = 'Pause demandée (fin du morceau en cours)...'; };
@@ -252,27 +279,43 @@ $('btn-stt').onclick = async () => {
   state.stopStt = false;
   $('btn-stt').disabled = true; $('btn-stt-stop').disabled = false; $('btn-llm').disabled = true;
   const model = $('stt-model').value, device = $('stt-device').value;
+  // Le moteur est recréé tous les RECYCLE morceaux : la mémoire qu'il a accumulée est ainsi rendue à iOS.
+  // Réglable pour les tests avec l'adresse « ?recycle=2 » (par défaut 1 = un moteur neuf par morceau).
+  const RECYCLE = Math.max(1, parseInt(new URLSearchParams(location.search).get('recycle'), 10) || 1);
   const files = {};
-  try {
-    if (device === 'webgpu' && !navigator.gpu) throw new Error('WebGPU indisponible sur ce navigateur : choisissez WASM.');
-    log(`Transcription : ${model} / ${device}`);
+  let call = null, sinceLoad = 0, curChunk = s.doneChunks + 1;
+  const startWorker = async () => {
+    stopWorker();
+    for (const k in files) delete files[k];
     sttWorker = new Worker('stt-worker.js', { type: 'module' });
-    const call = makeRpc(sttWorker, (p) => {
+    call = makeRpc(sttWorker, (p) => {
       if (p.status === 'progress' && p.total) {
         files[p.file] = { l: p.loaded, t: p.total };
         const L = Object.values(files).reduce((a, v) => a + v.l, 0), T = Object.values(files).reduce((a, v) => a + v.t, 0);
         $('stt-bar').value = L / T;
         $('stt-status').textContent = `Téléchargement du modèle : ${(L / 1e6).toFixed(0)} / ${(T / 1e6).toFixed(0)} Mo`;
       }
-    });
+    }, (steps) => mark(`décodage en cours (${steps} étapes)`, { chunk: curChunk, total: s.nChunks }));
+    mark('chargement du modèle', { chunk: curChunk, total: s.nChunks });
     $('stt-status').textContent = 'Chargement du modèle...';
     const loaded = await call({ type: 'load', model, device });
-    addMetric({ step: 'chargement Whisper', modele: model, moteur: device, secondes: +(loaded.ms / 1000).toFixed(1) });
+    sinceLoad = 0;
+    return loaded.ms;
+  };
+  state.busyWake = true;
+  try {
+    if (device === 'webgpu' && !navigator.gpu) throw new Error('WebGPU indisponible sur ce navigateur : choisissez WASM.');
+    log(`Transcription : ${model} / ${device} / moteur recréé tous les ${RECYCLE} morceau(x)`);
+    await keepAwake(); // l'écran ne doit pas se verrouiller pendant le calcul : iOS suspend alors la page
+    const loadMs = await startWorker();
+    addMetric({ step: 'chargement Whisper', modele: model, moteur: device, secondes: +(loadMs / 1000).toFixed(1) });
 
-    let computeMs = 0, audioSec = 0, skipped = 0;
+    let computeMs = 0, audioSec = 0, skipped = 0, reloadMs = 0;
     const tAll = performance.now();
     for (let i = s.doneChunks; i < s.nChunks; i++) {
       if (state.stopStt) break;
+      curChunk = i + 1;
+      mark('lecture du morceau', { chunk: curChunk, total: s.nChunks });
       const raw = await DB.getChunk(s.id, i);
       const pcm = new Int16Array(raw);
       const f32 = new Float32Array(pcm.length);
@@ -281,13 +324,26 @@ $('btn-stt').onclick = async () => {
       const rms = Math.sqrt(sum / pcm.length);
       if (rms < SILENCE_RMS) { skipped++; }
       else {
+        if (sinceLoad >= RECYCLE) {
+          mark('libération puis rechargement du moteur', { chunk: curChunk, total: s.nChunks });
+          stopWorker();
+          await sleep(300);
+          const ms = await startWorker();
+          reloadMs += ms;
+          log(`Moteur recréé en ${(ms / 1000).toFixed(1)} s`);
+        }
+        mark('calcul du morceau (encodage puis décodage)', { chunk: curChunk, total: s.nChunks });
         const r = await call({ type: 'run', index: i, audio: f32 }, [f32.buffer]);
+        sinceLoad++;
+        mark('résultat reçu', { chunk: curChunk, total: s.nChunks });
+        log(`Morceau ${curChunk}/${s.nChunks} : ${(r.ms / 1000).toFixed(1)} s de calcul, ${r.parts ? r.parts.length : 0} phrases, ${r.text.split(/\s+/).filter(Boolean).length} mots`);
         computeMs += r.ms; audioSec += pcm.length / SR;
         // Horodatage absolu = début du morceau + position de la phrase dans le morceau
         const parts = r.parts && r.parts.length ? r.parts : [{ t: 0, text: r.text }];
         for (const p of parts) if (p.text && !HALLU.test(p.text)) s.segments.push({ t: Math.round((i * CHUNK_SEC + p.t) * 10) / 10, text: p.text });
       }
       s.doneChunks = i + 1;
+      mark('sauvegarde du morceau', { chunk: curChunk, total: s.nChunks });
       await DB.putSession(s);
       $('stt-bar').value = s.doneChunks / s.nChunks;
       const remain = s.nChunks - s.doneChunks;
@@ -295,13 +351,16 @@ $('btn-stt').onclick = async () => {
       $('stt-status').textContent = `Morceau ${s.doneChunks}/${s.nChunks} – reste environ ${fmtMin(remain * perChunk)}` + (audioSec ? ` – vitesse ×${(audioSec / (computeMs / 1000)).toFixed(1)} du temps réel` : '');
       renderTranscript(s, true);
     }
-    if (audioSec) addMetric({ step: 'transcription', modele: model, moteur: device, audioSec: Math.round(audioSec), calculSec: Math.round(computeMs / 1000), vitesseTempsReel: +(audioSec / (computeMs / 1000)).toFixed(2), morceauxSilencieux: skipped, dureeTotaleMin: +((performance.now() - tAll) / 60000).toFixed(1) });
+    if (audioSec) addMetric({ step: 'transcription', modele: model, moteur: device, recyclage: RECYCLE, rechargementsSec: Math.round(reloadMs / 1000), audioSec: Math.round(audioSec), calculSec: Math.round(computeMs / 1000), vitesseTempsReel: +(audioSec / (computeMs / 1000)).toFixed(2), morceauxSilencieux: skipped, dureeTotaleMin: +((performance.now() - tAll) / 60000).toFixed(1) });
     $('stt-status').textContent = s.doneChunks >= s.nChunks ? 'Transcription terminée.' : 'En pause (reprise possible).';
   } catch (e) {
     log('ÉCHEC transcription : ' + e.message);
     $('stt-status').textContent = 'Erreur : ' + e.message;
   } finally {
-    if (sttWorker) { sttWorker.terminate(); sttWorker = null; log('Whisper déchargé de la mémoire'); }
+    if (sttWorker) { stopWorker(); log('Whisper déchargé de la mémoire'); }
+    clearMark(); // fin propre : pas d'interruption à signaler au prochain démarrage
+    state.busyWake = false;
+    try { state.wake && state.wake.release(); } catch {}
     $('btn-stt-stop').disabled = true;
     renderSession();
   }

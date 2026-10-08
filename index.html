@@ -20,6 +20,8 @@
 </header>
 
 <main>
+  <section id="crash" hidden></section>
+
   <details id="prev-wrap" hidden>
     <summary>Journal de la session précédente (utile après un plantage)</summary>
     <pre id="prev-log"></pre>
@@ -85,15 +87,15 @@
     <h2>4. Transcription (Whisper)</h2>
     <label>Modèle
       <select id="stt-model">
-        <option value="onnx-community/whisper-tiny">Whisper tiny (rapide, moins précis)</option>
-        <option value="onnx-community/whisper-base" selected>Whisper base</option>
-        <option value="onnx-community/whisper-small">Whisper small (meilleur, plus lourd)</option>
+        <option value="onnx-community/whisper-tiny" selected>Whisper tiny (seul réglage validé sur iPhone 14)</option>
+        <option value="onnx-community/whisper-base">Whisper base (plante sur iPhone 14)</option>
+        <option value="onnx-community/whisper-small">Whisper small (trop lourd pour iPhone 14, non testé)</option>
       </select>
     </label>
     <label>Moteur de calcul
       <select id="stt-device">
-        <option value="webgpu">WebGPU (rapide, si disponible)</option>
-        <option value="wasm">WASM (lent, compatible partout)</option>
+        <option value="wasm" selected>WASM (validé sur iPhone 14 avec Tiny)</option>
+        <option value="webgpu">WebGPU (non validé sur iPhone 14)</option>
       </select>
     </label>
     <div class="row">

@@ -1,6 +1,6 @@
 // Service worker : permet l'installation et l'ouverture hors connexion.
 // Les modèles d'IA sont mis en cache par leurs bibliothèques, pas ici.
-const V = 'dictaphone-proto-v3';
+const V = 'dictaphone-proto-v4';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'audio.js', 'db.js', 'stt-worker.js', 'llm-worker.js', 'recorder-worklet.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', (e) => {
