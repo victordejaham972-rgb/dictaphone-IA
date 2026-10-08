@@ -1,7 +1,7 @@
 // Audio : tout est converti en 16 kHz mono 16 bits et stocké par morceaux de 30 s.
 // Ainsi, une réunion de 2 h n'est jamais chargée entièrement en mémoire par l'application
 // (2 h à 16 kHz en 16 bits = environ 230 Mo sur disque, lus 30 s à la fois).
-import { putChunk } from './db.js';
+import { putChunk, getChunkBlob } from './db.js';
 
 export const SR = 16000;
 export const CHUNK_SEC = 30;
@@ -25,7 +25,7 @@ export class ChunkWriter {
   }
   flush() {
     if (this.n === 0) return;
-    const data = this.buf.slice(0, this.n).buffer;
+    const data = new Blob([this.buf.slice(0, this.n).buffer]);
     const i = this.idx++;
     this.n = 0;
     this.pending = this.pending
@@ -63,6 +63,25 @@ export class Resampler {
       }
     }
   }
+}
+
+// ---------- Relecture : réassemble les morceaux en un fichier WAV (sans tout charger en mémoire) ----------
+// Les morceaux sont des Blob : le navigateur les référence sans les copier en mémoire JavaScript.
+export async function buildWavBlob(session) {
+  const parts = [];
+  let bytes = 0;
+  for (let i = 0; i < session.nChunks; i++) {
+    const b = await getChunkBlob(session.id, i);
+    parts.push(b);
+    bytes += b.size;
+  }
+  const h = new DataView(new ArrayBuffer(44));
+  const w = (o, s) => { for (let i = 0; i < s.length; i++) h.setUint8(o + i, s.charCodeAt(i)); };
+  w(0, 'RIFF'); h.setUint32(4, 36 + bytes, true); w(8, 'WAVE'); w(12, 'fmt ');
+  h.setUint32(16, 16, true); h.setUint16(20, 1, true); h.setUint16(22, 1, true);
+  h.setUint32(24, SR, true); h.setUint32(28, SR * 2, true); h.setUint16(32, 2, true); h.setUint16(34, 16, true);
+  w(36, 'data'); h.setUint32(40, bytes, true);
+  return new Blob([h.buffer, ...parts], { type: 'audio/wav' });
 }
 
 // ---------- Enregistrement micro ----------

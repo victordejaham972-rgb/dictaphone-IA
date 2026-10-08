@@ -1,8 +1,11 @@
 // Dictaphone IA – prototype de faisabilité. Logique principale (interface + enchaînement des étapes).
 import * as DB from './db.js';
-import { ChunkWriter, Recorder, importFile, SR, CHUNK_SEC } from './audio.js';
+import { ChunkWriter, Recorder, importFile, buildWavBlob, SR, CHUNK_SEC } from './audio.js';
 
-const VERSION = '0.1.0';
+const VERSION = '0.2.1';
+// Lecteur simplifié : export, sauvegarde, marque-pages, vitesse et ±10 s sont masqués (attribut "hidden" dans index.html).
+// Leur code est conservé. Ce réglage ne commande que le bouton d'export du fichier d'origine.
+const SHOW_EXTRAS = false;
 const WEBLLM_URL = 'https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.79/+esm';
 const SILENCE_RMS = 0.002; // en dessous : morceau considéré comme silence (évite les hallucinations de Whisper)
 
@@ -96,18 +99,44 @@ function renderSession() {
   $('btn-stt').disabled = !s || busy || s.nChunks === 0;
   $('btn-llm').disabled = !s || busy || !s.segments.some((g) => g.text);
   $('btn-del').disabled = !s || busy;
-  if (!s) { $('sess-info').textContent = ''; $('transcript').value = ''; $('summary').value = ''; $('btn-dl-tr').disabled = $('btn-dl-sum').disabled = true; return; }
+  if (!s) { $('sess-info').textContent = ''; renderTranscript(null); $('summary').value = ''; $('btn-dl-tr').disabled = $('btn-dl-sum').disabled = true; loadPlayer(); return; }
   $('sess-info').textContent = `Durée ${fmtT(s.durationSec)} – ${s.nChunks} morceaux de ${CHUNK_SEC} s – transcrit : ${s.doneChunks}/${s.nChunks}`;
-  $('transcript').value = transcriptText(s);
+  renderTranscript(s);
   $('summary').value = s.summary || '';
-  $('btn-dl-tr').disabled = !$('transcript').value;
+  $('btn-dl-tr').disabled = !s.segments.some((g) => g.text);
   $('btn-dl-sum').disabled = !s.summary;
   $('stt-bar').value = s.nChunks ? s.doneChunks / s.nChunks : 0;
+  loadPlayer();
 }
 
 function newSession(name, source) {
-  return { id: 's' + Date.now(), name, source, createdAt: Date.now(), nChunks: 0, durationSec: 0, doneChunks: 0, segments: [], summary: '' };
+  return { id: 's' + Date.now(), name, source, createdAt: Date.now(), nChunks: 0, durationSec: 0, doneChunks: 0, segments: [], summary: '', bookmarks: [], hasOriginal: false };
 }
+
+// ---------- Transcription cliquable ----------
+function renderTranscript(s, scrollEnd = false) {
+  const box = $('transcript');
+  box.textContent = '';
+  lastNow = -1;
+  const segs = s ? s.segments.filter((g) => g.text) : [];
+  if (!segs.length) { box.innerHTML = '<span class="hint">La transcription apparaîtra ici.</span>'; return; }
+  const frag = document.createDocumentFragment();
+  segs.forEach((g, i) => {
+    const d = document.createElement('div');
+    d.className = 'seg'; d.dataset.i = i; d.dataset.t = g.t;
+    const b = document.createElement('b'); b.textContent = fmtT(g.t);
+    d.append(b, document.createTextNode(g.text));
+    frag.appendChild(d);
+  });
+  box.appendChild(frag);
+  if (scrollEnd) box.scrollTop = box.scrollHeight;
+}
+$('transcript').addEventListener('click', (e) => {
+  const d = e.target.closest('.seg');
+  if (!d || !audioReady) return;
+  audio.currentTime = +d.dataset.t;
+  audio.play().catch(() => {});
+});
 const stamp = () => new Date().toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 
 $('btn-del').onclick = async () => {
@@ -126,6 +155,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden && (s
 
 $('btn-rec').onclick = async () => {
   try {
+    if (!(await checkSpace(0))) return;
     const s = newSession('Enregistrement ' + stamp(), 'micro');
     await DB.putSession(s);
     const writer = new ChunkWriter(s.id, (n, total) => { s.nChunks = n; s.durationSec = total / SR; DB.putSession(s); });
@@ -166,6 +196,7 @@ $('file').onchange = async () => {
   const s = newSession(f.name, 'import');
   await DB.putSession(s);
   const writer = new ChunkWriter(s.id, (n, total) => { s.nChunks = n; s.durationSec = total / SR; });
+  if (!(await checkSpace(f.size))) { await DB.deleteSession(s.id); await refreshSessions(); $('file').value = ''; return; }
   const bar = $('imp-bar');
   bar.hidden = false; bar.value = 0;
   $('rec-status').textContent = `Import de « ${f.name} » (${(f.size / 1048576).toFixed(1)} Mo)...`;
@@ -175,6 +206,12 @@ $('file').onchange = async () => {
     const mode = await importFile(f, writer, (p) => { bar.value = p; });
     const { chunks, total } = await writer.finish();
     s.nChunks = chunks; s.durationSec = total / SR;
+    if ($('keep-orig').checked) {
+      if (f.size <= 300 * 1048576) {
+        try { await DB.putOriginal(s.id, { blob: f, name: f.name, type: f.type }); s.hasOriginal = true; log('Fichier d\'origine conservé'); }
+        catch (e) { log('Fichier d\'origine NON conservé : ' + e.message); }
+      } else log('Fichier d\'origine trop gros (> 300 Mo) : non conservé, seul l\'audio WAV 16 kHz est gardé');
+    }
     await DB.putSession(s);
     addMetric({ step: 'import', fichier: f.name, tailleMo: +(f.size / 1048576).toFixed(1), mode, dureeSec: Math.round(total / SR), tempsSec: Math.round((performance.now() - t0) / 1000) });
     $('rec-status').textContent = `Import terminé : ${fmtT(s.durationSec)}.`;
@@ -242,22 +279,21 @@ $('btn-stt').onclick = async () => {
       let sum = 0;
       for (let k = 0; k < pcm.length; k++) { f32[k] = pcm[k] / 32768; sum += f32[k] * f32[k]; }
       const rms = Math.sqrt(sum / pcm.length);
-      const seg = { t: i * CHUNK_SEC, text: '' };
       if (rms < SILENCE_RMS) { skipped++; }
       else {
         const r = await call({ type: 'run', index: i, audio: f32 }, [f32.buffer]);
         computeMs += r.ms; audioSec += pcm.length / SR;
-        seg.text = HALLU.test(r.text) ? '' : r.text;
+        // Horodatage absolu = début du morceau + position de la phrase dans le morceau
+        const parts = r.parts && r.parts.length ? r.parts : [{ t: 0, text: r.text }];
+        for (const p of parts) if (p.text && !HALLU.test(p.text)) s.segments.push({ t: Math.round((i * CHUNK_SEC + p.t) * 10) / 10, text: p.text });
       }
-      s.segments.push(seg);
       s.doneChunks = i + 1;
       await DB.putSession(s);
       $('stt-bar').value = s.doneChunks / s.nChunks;
       const remain = s.nChunks - s.doneChunks;
       const perChunk = computeMs / Math.max(1, s.doneChunks - skipped);
       $('stt-status').textContent = `Morceau ${s.doneChunks}/${s.nChunks} – reste environ ${fmtMin(remain * perChunk)}` + (audioSec ? ` – vitesse ×${(audioSec / (computeMs / 1000)).toFixed(1)} du temps réel` : '');
-      $('transcript').value = transcriptText(s);
-      $('transcript').scrollTop = $('transcript').scrollHeight;
+      renderTranscript(s, true);
     }
     if (audioSec) addMetric({ step: 'transcription', modele: model, moteur: device, audioSec: Math.round(audioSec), calculSec: Math.round(computeMs / 1000), vitesseTempsReel: +(audioSec / (computeMs / 1000)).toFixed(2), morceauxSilencieux: skipped, dureeTotaleMin: +((performance.now() - tAll) / 60000).toFixed(1) });
     $('stt-status').textContent = s.doneChunks >= s.nChunks ? 'Transcription terminée.' : 'En pause (reprise possible).';
@@ -394,15 +430,193 @@ $('btn-llm').onclick = async () => {
 };
 
 // ---------- Exports et rapport ----------
-function download(name, text) {
+function downloadBlob(name, blob) {
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
+  a.href = URL.createObjectURL(blob);
   a.download = name;
   a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  setTimeout(() => URL.revokeObjectURL(a.href), 60000);
 }
-$('btn-dl-tr').onclick = () => download('transcription.txt', $('transcript').value);
+const download = (name, text) => downloadBlob(name, new Blob([text], { type: 'text/plain;charset=utf-8' }));
+$('btn-dl-tr').onclick = () => download('transcription.txt', transcriptText(state.session));
 $('btn-dl-sum').onclick = () => download('compte-rendu.txt', $('summary').value);
+
+// ---------- Espace de stockage ----------
+async function storageInfo() {
+  try {
+    const est = await navigator.storage.estimate();
+    const persisted = navigator.storage.persisted ? await navigator.storage.persisted() : false;
+    $('store-info').textContent = `Stockage : ${(est.usage / 1048576).toFixed(0)} Mo utilisés sur ${(est.quota / 1048576).toFixed(0)} Mo possibles. Conservation protégée : ${persisted ? 'oui' : 'NON (faites des sauvegardes)'}. Une réunion de 2 h occupe environ 230 Mo.`;
+    return est;
+  } catch { $('store-info').textContent = 'Espace de stockage : estimation indisponible.'; return null; }
+}
+// Avertit si l'espace restant semble insuffisant pour une réunion de 2 h (~230 Mo + fichier d'origine éventuel)
+async function checkSpace(extraBytes) {
+  const est = await storageInfo();
+  if (!est || !est.quota) return true;
+  const free = est.quota - est.usage, need = 260 * 1048576 + extraBytes;
+  if (free >= need) return true;
+  return confirm(`Il resterait environ ${(free / 1048576).toFixed(0)} Mo d'espace pour ${(need / 1048576).toFixed(0)} Mo nécessaires. Continuer quand même ?`);
+}
+
+// ---------- Lecteur audio ----------
+const audio = $('audio');
+let audioUrl = null, loadedKey = null, audioReady = false, playerBlob = null, lastNow = -1;
+
+function unloadPlayer() {
+  audio.pause();
+  if (audioUrl) { audio.removeAttribute('src'); audio.load(); URL.revokeObjectURL(audioUrl); }
+  audioUrl = null; loadedKey = null; audioReady = false; playerBlob = null;
+  for (const id of ['seek', 'b-back', 'b-play', 'b-fwd', 'b-mark', 'b-exp-wav', 'b-backup']) $(id).disabled = true;
+  $('b-exp-orig').hidden = true;
+  $('t-cur').textContent = $('t-dur').textContent = '00:00:00';
+  $('seek').value = 0; $('seek').max = 0;
+  renderMarks();
+}
+
+async function loadPlayer() {
+  const s = state.session;
+  if (!s || !s.nChunks || state.rec) { $('pl-title').textContent = state.rec ? 'Enregistrement en cours...' : 'Aucun enregistrement sélectionné.'; unloadPlayer(); return; }
+  const key = s.id + ':' + s.nChunks;
+  $('b-exp-orig').hidden = !SHOW_EXTRAS || !s.hasOriginal;
+  $('pl-title').textContent = `${s.name} – préparation de l'audio...`;
+  renderMarks();
+  if (key === loadedKey) { $('pl-title').textContent = s.name; return; }
+  unloadPlayer();
+  loadedKey = key;
+  try {
+    const t0 = performance.now();
+    const blob = await buildWavBlob(s);
+    if (loadedKey !== key) return; // l'utilisateur a changé d'enregistrement entre-temps
+    playerBlob = blob;
+    audioUrl = URL.createObjectURL(blob);
+    audio.src = audioUrl;
+    audio.load();
+    log(`Lecteur prêt : ${(blob.size / 1048576).toFixed(0)} Mo assemblés en ${Math.round(performance.now() - t0)} ms`);
+    $('pl-title').textContent = s.name;
+    $('b-exp-wav').disabled = $('b-backup').disabled = false;
+    $('b-exp-orig').hidden = !SHOW_EXTRAS || !s.hasOriginal;
+  } catch (e) {
+    loadedKey = null;
+    log('ÉCHEC lecteur : ' + e.message);
+    $('pl-title').textContent = 'Lecteur indisponible : ' + e.message;
+  }
+}
+
+const applyAudioRate = () => {
+  audio.playbackRate = +$('speed').value;
+  audio.preservesPitch = true; audio.webkitPreservesPitch = true; // garde une voix naturelle à vitesse modifiée
+};
+audio.addEventListener('loadedmetadata', () => {
+  audioReady = true;
+  const d = audio.duration;
+  $('seek').max = Math.floor(d); $('seek').value = 0;
+  $('t-dur').textContent = fmtT(d);
+  for (const id of ['seek', 'b-back', 'b-play', 'b-fwd', 'b-mark']) $(id).disabled = false;
+  applyAudioRate();
+  log(`Audio chargé : durée lue par le navigateur ${fmtT(d)}`);
+});
+audio.addEventListener('error', () => log('ERREUR audio : code ' + (audio.error && audio.error.code) + ' ' + ((audio.error && audio.error.message) || '')));
+audio.addEventListener('play', () => { $('b-play').textContent = 'Pause'; });
+audio.addEventListener('pause', () => { $('b-play').textContent = 'Lecture'; });
+audio.addEventListener('ended', () => { $('b-play').textContent = 'Lecture'; });
+audio.addEventListener('timeupdate', () => {
+  const t = audio.currentTime;
+  if (!$('seek').matches(':active')) $('seek').value = Math.floor(t);
+  $('t-cur').textContent = fmtT(t);
+  // Surligne la phrase en cours
+  const nodes = $('transcript').querySelectorAll('.seg');
+  if (!nodes.length) return;
+  let lo = 0, hi = nodes.length - 1, found = -1;
+  while (lo <= hi) { const mid = (lo + hi) >> 1; if (+nodes[mid].dataset.t <= t) { found = mid; lo = mid + 1; } else hi = mid - 1; }
+  if (found !== lastNow) {
+    if (lastNow >= 0 && nodes[lastNow]) nodes[lastNow].classList.remove('now');
+    if (found >= 0) nodes[found].classList.add('now');
+    lastNow = found;
+  }
+});
+$('seek').addEventListener('input', () => { if (audioReady) { audio.currentTime = +$('seek').value; $('t-cur').textContent = fmtT(+$('seek').value); } });
+$('b-play').onclick = () => { if (!audioReady) return; audio.paused ? audio.play().catch((e) => log('Lecture refusée : ' + e.message)) : audio.pause(); };
+$('b-back').onclick = () => { audio.currentTime = Math.max(0, audio.currentTime - 10); };
+$('b-fwd').onclick = () => { audio.currentTime = Math.min(audio.duration, audio.currentTime + 10); };
+$('speed').onchange = applyAudioRate;
+
+// ---------- Marque-pages ----------
+function renderMarks() {
+  const ul = $('marks'), s = state.session;
+  ul.textContent = '';
+  if (!s || !s.bookmarks) return;
+  s.bookmarks.forEach((m, i) => {
+    const li = document.createElement('li');
+    const go = document.createElement('button');
+    go.textContent = `▶ ${fmtT(m.t)}${m.label ? ' – ' + m.label : ''}`;
+    go.onclick = () => { if (audioReady) { audio.currentTime = m.t; audio.play().catch(() => {}); } };
+    const del = document.createElement('button');
+    del.textContent = '✕'; del.setAttribute('aria-label', 'Supprimer ce marque-page');
+    del.onclick = async () => { s.bookmarks.splice(i, 1); await DB.putSession(s); renderMarks(); };
+    li.append(go, del);
+    ul.appendChild(li);
+  });
+}
+$('b-mark').onclick = async () => {
+  const s = state.session;
+  if (!s || !audioReady) return;
+  const t = Math.floor(audio.currentTime);
+  const label = prompt(`Marque-page à ${fmtT(t)} – nom (facultatif) :`, '');
+  if (label === null) return;
+  (s.bookmarks ||= []).push({ t, label: label.trim() });
+  s.bookmarks.sort((a, b) => a.t - b.t);
+  await DB.putSession(s);
+  renderMarks();
+};
+
+// ---------- Export et sauvegarde ----------
+const safeName = (s) => (s.name || 'enregistrement').replace(/[^\w\- ]+/g, '_').trim().slice(0, 60) || 'enregistrement';
+// Partage natif si disponible (iPhone : « Enregistrer dans Fichiers »), sinon téléchargement classique
+async function shareOrDownload(files, title) {
+  if (navigator.canShare && navigator.canShare({ files })) {
+    try { await navigator.share({ files, title }); log('Export via la feuille de partage'); return; }
+    catch (e) { if (e.name === 'AbortError') { log('Export annulé'); return; } log('Partage impossible (' + e.message + '), téléchargement à la place'); }
+  }
+  for (const f of files) downloadBlob(f.name, f);
+}
+$('b-exp-wav').onclick = async () => {
+  const s = state.session;
+  if (!s || !playerBlob) return;
+  await shareOrDownload([new File([playerBlob], safeName(s) + '.wav', { type: 'audio/wav' })], s.name);
+};
+$('b-exp-orig').onclick = async () => {
+  const s = state.session;
+  const o = s && (await DB.getOriginal(s.id));
+  if (!o) { alert('Fichier d\'origine introuvable.'); return; }
+  await shareOrDownload([new File([o.blob], o.name, { type: o.type })], s.name);
+};
+$('b-backup').onclick = async () => {
+  const s = state.session;
+  if (!s || !playerBlob) return;
+  const meta = { format: 'dictaphone-ia-sauvegarde', version: 1, exportedAt: new Date().toISOString(), name: s.name, source: s.source, durationSec: s.durationSec, doneChunks: s.doneChunks, nChunks: s.nChunks, segments: s.segments, summary: s.summary, bookmarks: s.bookmarks || [] };
+  const base = safeName(s);
+  await shareOrDownload([
+    new File([playerBlob], base + '.wav', { type: 'audio/wav' }),
+    new File([JSON.stringify(meta, null, 1)], base + '.json', { type: 'application/json' }),
+  ], s.name);
+};
+// Restauration : 1) importer le .wav sauvegardé (bouton « importer un fichier »), 2) appliquer le .json ici
+$('restore').onchange = async () => {
+  const f = $('restore').files[0], s = state.session;
+  $('restore').value = '';
+  if (!f || !s) return;
+  try {
+    const m = JSON.parse(await f.text());
+    if (m.format !== 'dictaphone-ia-sauvegarde') throw new Error('ce fichier n\'est pas une sauvegarde Dictaphone IA');
+    if (Math.abs(m.durationSec - s.durationSec) > 5 && !confirm(`Durées différentes (sauvegarde ${fmtT(m.durationSec)}, enregistrement ${fmtT(s.durationSec)}). Appliquer quand même ?`)) return;
+    s.segments = m.segments || []; s.summary = m.summary || ''; s.bookmarks = m.bookmarks || [];
+    s.doneChunks = m.doneChunks >= m.nChunks ? s.nChunks : Math.min(m.doneChunks, s.nChunks);
+    await DB.putSession(s);
+    log('Sauvegarde appliquée');
+    renderSession();
+  } catch (e) { log('Restauration impossible : ' + e.message); alert('Restauration impossible : ' + e.message); }
+};
 
 $('btn-report').onclick = async () => {
   if (!state.diag) await runDiag();
@@ -416,5 +630,6 @@ $('btn-report').onclick = async () => {
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch((e) => log('Service worker : ' + e.message));
   try { if (navigator.storage && navigator.storage.persist) log('Stockage persistant accordé : ' + (await navigator.storage.persist())); } catch {}
   await refreshSessions();
+  storageInfo();
   log('Application prête');
 })();

@@ -19,8 +19,10 @@ self.onmessage = async (e) => {
       self.postMessage({ type: 'loaded', ms: performance.now() - t0 });
     } else if (m.type === 'run') {
       const t0 = performance.now();
-      const out = await asr(m.audio, { language: 'french', task: 'transcribe' });
-      self.postMessage({ type: 'result', index: m.index, text: (out.text || '').trim(), ms: performance.now() - t0 });
+      // return_timestamps : Whisper indique le début de chaque phrase, ce qui permet de se positionner dans l'audio
+      const out = await asr(m.audio, { language: 'french', task: 'transcribe', return_timestamps: true });
+      const parts = (out.chunks || []).map((c) => ({ t: (c.timestamp && c.timestamp[0]) || 0, text: (c.text || '').trim() }));
+      self.postMessage({ type: 'result', index: m.index, text: (out.text || '').trim(), parts, ms: performance.now() - t0 });
     }
   } catch (err) {
     self.postMessage({ type: 'error', message: String((err && err.message) || err) });
