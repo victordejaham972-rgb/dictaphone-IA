@@ -1,9 +1,9 @@
 // Service worker : installation de l'application et ouverture rapide. Il ne met en cache QUE les fichiers de l'application
 // (jamais les données de l'utilisateur, qui restent dans IndexedDB). Les modèles d'IA du laboratoire sont gérés par leurs bibliothèques.
-const V = 'dictaphone-v12-0.6.0';
+const V = 'dictaphone-v13-0.6.1';
 const SHELL = [
   './', 'index.html', 'app.css', 'manifest.webmanifest',
-  'js/main.js', 'js/ui.js', 'js/store.js', 'js/defaults.js', 'js/common.js', 'js/exports.js', 'js/pdf.js', 'js/backup.js', 'js/ai.js', 'js/version.js', 'js/import.js', 'js/pdfread.js', 'js/update.js', 'js/theme.js', 'js/vocab-ui.js', 'js/ia-engine.js', 'js/ia-pipeline.js', 'js/ia-ui.js', 'js/ia-demo.js', 'js/assist.js', 'js/ttf.js', 'fonts/pdf/AbhayaLibre-Regular.ttf', 'fonts/pdf/OpenSans-Light.ttf', 'fonts/pdf/OpenSans-Regular.ttf', 'vendor/pdfjs/pdf.min.mjs', 'vendor/pdfjs/pdf.worker.min.mjs',
+  'js/main.js', 'js/ui.js', 'js/store.js', 'js/defaults.js', 'js/common.js', 'js/exports.js', 'js/pdf.js', 'js/backup.js', 'js/ai.js', 'js/version.js', 'js/import.js', 'js/pdfread.js', 'js/update.js', 'js/theme.js', 'js/vocab-ui.js', 'js/ia-engine.js', 'js/ia-pipeline.js', 'js/ia-ui.js', 'js/ia-demo.js', 'js/assist.js', 'js/diag.js', 'diagnostic.html', 'js/ttf.js', 'fonts/pdf/AbhayaLibre-Regular.ttf', 'fonts/pdf/OpenSans-Light.ttf', 'fonts/pdf/OpenSans-Regular.ttf', 'vendor/pdfjs/pdf.min.mjs', 'vendor/pdfjs/pdf.worker.min.mjs',
   'js/views-home.js', 'js/views-library.js', 'js/views-entretien.js', 'js/views-templates.js', 'js/views-settings.js',
   'db.js', 'audio.js',
   'fonts/abhaya-libre-latin-400-normal.woff2', 'fonts/abhaya-libre-latin-600-normal.woff2', 'fonts/open-sans-latin-wght-normal.woff2',

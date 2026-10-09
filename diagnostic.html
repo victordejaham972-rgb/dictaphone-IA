@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' http://127.0.0.1:* http://localhost:* http://[::1]:*; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+  <title>Diagnostic · Dictaphone IA</title>
+  <script src="js/theme.js"></script>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <main class="view" style="max-width:760px;margin:0 auto;padding:20px 16px 60px">
+    <p class="eyebrow">DICTAPHONE IA</p>
+    <h1 class="serif" style="font-size:30px;margin:4px 0 8px">Diagnostic</h1>
+    <p class="hint">Cette page vérifie le fonctionnement du navigateur pour l'application. Elle ne lit aucun contenu de vos entretiens (seulement des nombres) et ne modifie rien. Rien n'est envoyé sur Internet.</p>
+    <div class="btn-row" style="margin:14px 0">
+      <button class="btn primary" id="run">Relancer le diagnostic</button>
+      <button class="btn" id="copy">Copier le rapport</button>
+      <a class="btn" href="./">Retour à l'application</a>
+    </div>
+    <div class="card"><pre id="out" style="white-space:pre-wrap;word-break:break-word;margin:0;font-size:14px;line-height:1.5">Diagnostic en cours…</pre></div>
+    <div class="card" style="margin-top:14px">
+      <h2 class="serif" style="font-size:20px;margin:0 0 6px">Réparer le chargement (sans toucher à vos données)</h2>
+      <p class="hint">Supprime uniquement les fichiers du programme gardés en mémoire par le navigateur (cache et service worker), puis recharge l'application. Vos entretiens, trames, réglages et sauvegardes ne sont pas touchés.</p>
+      <button class="btn" id="repair">Réparer le chargement</button>
+      <p class="hint" id="repairMsg"></p>
+    </div>
+  </main>
+  <script type="module" src="js/diag.js"></script>
+</body>
+</html>

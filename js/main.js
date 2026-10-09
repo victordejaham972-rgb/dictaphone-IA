@@ -58,13 +58,21 @@ refreshFoot();
 const setActive = (id) => { for (const [k, a] of Object.entries(tabEls)) { a.classList.toggle('on', k === id && k !== 'new'); a.toggleAttribute('aria-current', k === id); if (k !== id) a.removeAttribute('aria-current'); else a.setAttribute('aria-current', 'page'); } };
 
 let current = null, seq = 0;
+const routeTab = (p) => (routes.find(([re]) => re.test(p)) || [0, 0, 'home'])[2];
 function errorView(err) {
   console.error('Erreur d\'affichage :', err && err.message);
   return { el: h('div', { class: 'view' }, h('div', { class: 'card' },
     h('h2', { class: 'serif', style: { fontSize: '24px' }, text: 'Un problème est survenu' }),
     h('p', { text: 'L\'écran n\'a pas pu s\'afficher. Vos données ne sont pas modifiées.' }),
-    h('p', { class: 'hint', text: String((err && err.message) || err).slice(0, 200) }),
-    h('div', { class: 'btn-row' }, h('button', { class: 'btn primary', text: 'Recharger', onclick: () => location.reload() }), h('a', { class: 'btn', href: '#/', text: 'Accueil' })))) };
+    h('p', { class: 'hint', text: String((err && err.message) || err).slice(0, 360) }),
+    h('div', { class: 'btn-row' }, h('button', { class: 'btn primary', text: 'Recharger', onclick: () => location.reload() }), h('a', { class: 'btn', href: '#/', text: 'Accueil' }), h('a', { class: 'btn', href: 'diagnostic.html', text: 'Diagnostic' })))) };
+}
+// Jamais d'écran vide : si l'affichage tarde (stockage du navigateur lent ou bloqué), on l'indique et on propose le diagnostic.
+function slowNotice() {
+  return h('div', { class: 'view', 'data-slow': '1' }, h('div', { class: 'card' },
+    h('h2', { class: 'serif', style: { fontSize: '22px' }, text: 'Chargement en cours…' }),
+    h('p', { class: 'hint', text: 'Le navigateur met du temps à ouvrir le stockage de l\'application. Vos données ne sont pas modifiées. Si rien ne s\'affiche dans quelques secondes, lancez le diagnostic.' }),
+    h('div', { class: 'btn-row' }, h('button', { class: 'btn', text: 'Recharger', onclick: () => location.reload() }), h('a', { class: 'btn', href: 'diagnostic.html', text: 'Diagnostic' }))));
 }
 
 // Ordinateur large : la liste des entretiens reste affichée à gauche de la fiche (trois colonnes avec le menu)
@@ -78,9 +86,10 @@ async function render() {
   const query = Object.fromEntries(new URLSearchParams(qs));
   const prevList = app.querySelector('.pane-list'), listScroll = prevList ? prevList.scrollTop : 0;
   let out, listOut = null, tab = 'home';
+  const slow = setTimeout(() => { if (my === seq) { app.replaceChildren(slowNotice()); setActive(routeTab(path)); } }, 3500);
   try {
     const route = routes.find(([re]) => re.test(path));
-    if (!route) { location.replace('#/'); return; }
+    if (!route) { clearTimeout(slow); location.replace('#/'); return; }
     tab = route[2];
     const params = path.match(route[0]).slice(1);
     const isFiche = route[1] === ficheView, isLib = route[1] === libraryView;
@@ -89,6 +98,7 @@ async function render() {
       else { listOut = await libraryView({ params, query, selectedId: null }); out = { el: h('div', { class: 'pane-empty' }, h('div', {}, h('img', { src: 'img/emblem-ivory.png', alt: '', style: { filter: 'invert(.25) sepia(1) hue-rotate(150deg)' } }), h('h2', { text: 'Sélectionnez un entretien' }), h('p', { text: 'Ouvrez une fiche dans la liste, ou créez un nouvel entretien.' }))) }; }
     } else out = await route[1]({ params, query });
   } catch (err) { out = errorView(err); listOut = null; }
+  clearTimeout(slow);
   if (my !== seq) return;
   if (listOut) {
     app.replaceChildren(h('div', { class: 'split' }, h('aside', { class: 'pane-list' }, listOut.el), h('section', { class: 'pane-main' }, out.el)));
@@ -104,9 +114,11 @@ window.addEventListener('unhandledrejection', (e) => { console.error('Erreur :',
 
 (async function start() {
   try {
-    await S.ensureDefaults();
+    const defaults = S.ensureDefaults();
+    defaults.catch(() => {});
+    await Promise.race([defaults, new Promise((r) => setTimeout(r, 3000))]);   // ne jamais laisser l'écran vide si le stockage tarde
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
-  } catch (err) { app.replaceChildren(errorView(err).el); return; }
+  } catch (err) { console.error('Initialisation :', err && err.message); }   // l'écran affichera lui-même l'erreur, et l'application reste utilisable (Réglages, diagnostic)
   await render();
   // Service worker : `updateViaCache: 'none'` = le fichier sw.js est toujours vérifié auprès du serveur (jamais lu dans le cache du navigateur)
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(() => {});

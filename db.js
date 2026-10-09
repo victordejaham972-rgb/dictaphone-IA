@@ -18,18 +18,23 @@ function open() {
       if (!db.objectStoreNames.contains('folders')) db.createObjectStore('folders', { keyPath: 'id' });
       if (!db.objectStoreNames.contains('templates')) db.createObjectStore('templates', { keyPath: 'id' });
     };
+    // Garde-fou : si le navigateur n'ouvre jamais la base (extension, profil ou stockage bloqué), on le dit au lieu de laisser un écran vide.
+    const guard = setTimeout(() => reject(new Error('Le navigateur n\'ouvre pas le stockage de l\'application (délai dépassé). Essayez une fenêtre de navigation privée, un autre navigateur, ou désactivez les extensions pour ce site. Vos données ne sont pas modifiées.')), OPEN_TIMEOUT);
     r.onsuccess = () => {
+      clearTimeout(guard);
       // Si un autre onglet doit mettre la base à jour, on libère la connexion au lieu de le bloquer.
-      r.result.onversionchange = () => r.result.close();
+      r.result.onversionchange = () => { r.result.close(); dbPromise = null; };
       resolve(r.result);
     };
-    r.onblocked = () => reject(new Error('Base verrouillée par un autre onglet : fermez les autres fenêtres Dictaphone IA puis rechargez.'));
-    r.onerror = () => reject(r.error);
+    r.onblocked = () => { clearTimeout(guard); reject(new Error('Base verrouillée par un autre onglet : fermez les autres fenêtres Dictaphone IA puis rechargez.')); };
+    r.onerror = () => { clearTimeout(guard); reject(r.error); };
   });
 }
+const OPEN_TIMEOUT = 12000;
 
 async function tx(store, mode, fn) {
-  const db = await (dbPromise ||= open());
+  // Une ouverture qui a échoué n'est pas conservée : le prochain appel réessaie.
+  const db = await (dbPromise ||= open().catch((err) => { dbPromise = null; throw err; }));
   return new Promise((resolve, reject) => {
     const t = db.transaction(store, mode);
     let out;

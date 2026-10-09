@@ -34,10 +34,11 @@ export function cleanUrl(raw) {
   return u.origin;
 }
 
+const PROBE_MS = 30000;   // laisse le temps de répondre à la demande d'autorisation « réseau local » du navigateur
 const withTimeout = async (url, init, ms) => {
   const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), ms);
-  try { return await fetch(url, { ...init, signal: ctl.signal, cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer' }); }
-  catch (err) { if (err && err.name === 'AbortError') throw new Error('Le moteur ne répond pas (délai dépassé).'); throw err; }
+  try { return await fetch(url, { ...init, signal: ctl.signal, cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer', targetAddressSpace: 'loopback' }); }
+  catch (err) { if (err && err.name === 'AbortError') throw new Error('Le moteur ne répond pas (délai dépassé). Si le navigateur affiche une demande d\'accès au réseau local ou aux appareils de ce réseau, choisissez « Autoriser » puis recommencez ; sinon vérifiez que le moteur est lancé (fenêtre « Lancer l\'IA locale » ouverte).'); throw err; }
   finally { clearTimeout(t); }
 };
 
@@ -47,11 +48,11 @@ export async function probeServer(rawUrl) {
   let url;
   try { url = cleanUrl(rawUrl); } catch (e) { return { ok: false, error: e.message }; }
   try {
-    const r = await withTimeout(url + '/api/tags', {}, 4000);
+    const r = await withTimeout(url + '/api/tags', {}, PROBE_MS);
     if (r.ok) { const j = await r.json(); const models = (j.models || []).map((m) => m.name || m.model).filter(Boolean); return { ok: true, flavor: 'ollama', models, ms: Math.round(performance.now() - t0), url }; }
   } catch (e) { if (/délai/.test(e.message)) return { ok: false, error: e.message }; }
   try {
-    const r = await withTimeout(url + '/v1/models', {}, 4000);
+    const r = await withTimeout(url + '/v1/models', {}, PROBE_MS);
     if (r.ok) { const j = await r.json(); const models = (j.data || []).map((m) => m.id).filter(Boolean); return { ok: true, flavor: 'openai', models, ms: Math.round(performance.now() - t0), url }; }
     return { ok: false, error: `Le moteur répond (code ${r.status}) mais n'est pas reconnu.` };
   } catch (e) {
