@@ -2,3 +2,9 @@
 - Abhaya Libre : voir LICENCE-Abhaya-Libre-OFL.txt (paquet @fontsource/abhaya-libre 5.3.0)
 - DM Sans : voir LICENCE-DM-Sans-OFL.txt (paquet @fontsource-variable/dm-sans 5.3.0)
 Ces polices sont les polices du site de l'entreprise ; elles sont servies depuis l'application, sans appel à un service externe.
+Polices utilisées uniquement pour fabriquer les fichiers PDF (fonts/pdf/*.ttf), intégrées dans les PDF créés par l'application. Aucun chargement depuis un service externe.
+Toutes sont sous licence SIL Open Font License 1.1 (utilisation, intégration dans des documents et redistribution libres, y compris à titre commercial).
+- Abhaya Libre Regular (titres) : paquet @fontsource/abhaya-libre 5.3.0, sous-ensemble « latin » ; licence : LICENCE-Abhaya-Libre-OFL.txt
+- Open Sans Light et Open Sans Regular (texte) : paquet @fontsource/open-sans 5.3.0, sous-ensemble « latin » ; licence : LICENCE-Open-Sans-OFL.txt
+Les fichiers .woff d'origine ont été convertis en .ttf sans modification des glyphes (le format .ttf est requis pour l'intégration dans un PDF).
+Charte Ade-ci : Abadi (police des documents principaux) est une police commerciale de Monotype, dont la licence n'autorise pas la redistribution avec l'application : elle n'est pas utilisée. Abhaya Libre + Open Sans (combinaison indiquée pour les supports WordPress/Canva) la remplacent.

@@ -1,6 +1,6 @@
 // Exports : copie, fichier texte, PDF (via la fenêtre d'impression, gratuite et sans service externe), partage de fichiers.
 import { catLabel } from './defaults.js';
-import { reportOf, folderPath } from './store.js';
+import { reportOf, folderPath, transcriptOf } from './store.js';
 
 export const fmtDate = (ms) => new Date(ms).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
 export const fmtDateTime = (ms) => new Date(ms).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -46,19 +46,41 @@ export const downloadText = (name, text) => downloadBlob(name, new Blob([text], 
 // iPhone : feuille de partage (« Enregistrer dans Fichiers »). Sinon : téléchargement classique.
 export async function shareOrDownload(files, title) {
   if (navigator.canShare && navigator.canShare({ files })) {
-    try { await navigator.share({ files, title }); return 'partage'; } catch (err) { if (err && err.name === 'AbortError') return 'annule'; }
+    try { await navigator.share({ files, title }); return 'partage'; } catch (err) { if (err && err.name === 'AbortError') return 'annule'; if (err && err.name === 'NotAllowedError') return 'refuse'; }
   }
   for (const f of files) downloadBlob(f.name, f);
   return 'telechargement';
 }
 
-// Vrai fichier PDF (partageable avec les fonctions natives de l'iPhone)
-export async function reportPdfFile(e, folders, templateName) {
-  const { makePdf } = await import('./pdf.js');
-  const blob = await makePdf({ title: e.title, meta: metaLine(e, folders) + (templateName ? ' · Trame : ' + templateName : ''), sections: reportOf(e) });
-  return new File([blob], safeName(e.title) + '-compte-rendu.pdf', { type: 'application/pdf' });
+// Libellés des informations de l'en-tête des documents, selon la catégorie
+const WHO_LABEL = { clients: 'Client', webinaires: 'Société / organisateur', internes: 'Équipe / personnes' };
+const fmtDayLong = (ms) => new Date(ms).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+export function docRows(e, folders, templateName, kind) {
+  const path = e.folderId ? folderPath(e.folderId, folders).map((f) => f.name).join(' › ') : '';
+  return [
+    { label: WHO_LABEL[e.category] || 'Nom', value: e.who },
+    { label: 'Sujet', value: e.subject },
+    { label: 'Date', value: fmtDayLong(e.date) },
+    { label: 'Catégorie', value: e.category ? catLabel(e.category) : '' },
+    { label: 'Dossier', value: path },
+    kind === 'report' && templateName ? { label: 'Trame', value: templateName } : null,
+  ].filter(Boolean);
 }
+export const transcriptText = (e, folders) => [e.title, metaLine(e, folders), '', transcriptOf(e).trim()].join('\n').trim() + '\n';
 
+// Vrai fichier PDF créé par l'application (partageable avec les fonctions natives de l'iPhone : « Enregistrer dans Fichiers », Mail…)
+// kind : 'report' (compte rendu) ou 'transcript' (transcription complète)
+export async function docPdfFile(e, folders, templateName, kind = 'report') {
+  const { makePdf } = await import('./pdf.js');
+  const isT = kind === 'transcript';
+  const sections = isT ? [{ title: '', content: transcriptOf(e) }] : reportOf(e);
+  const blob = await makePdf({
+    kind: isT ? 'Transcription' : 'Compte rendu', title: e.title, rows: docRows(e, folders, templateName, kind), sections,
+    footer: isT ? 'Ade-ci Family Office · Transcription brute, non relue · Document confidentiel' : 'Ade-ci Family Office · Document confidentiel · Compte rendu rédigé et relu par l\'utilisateur',
+  });
+  return new File([blob], safeName(e.title) + (isT ? '-transcription.pdf' : '-compte-rendu.pdf'), { type: 'application/pdf' });
+}
+export const reportPdfFile = (e, folders, templateName) => docPdfFile(e, folders, templateName, 'report');
 // Envoi par mail : on prépare un lien « mailto: » ; la messagerie de l'appareil s'ouvre avec le message prêt.
 // Rien n'est envoyé par Dictaphone IA : l'utilisateur relit puis envoie lui-même depuis Mail, Outlook, etc.
 export const validEmail = (a) => /^[^\s@<>(),;]+@[^\s@<>(),;]+\.[^\s@<>(),;]{2,}$/.test(a);

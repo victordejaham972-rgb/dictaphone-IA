@@ -127,7 +127,7 @@ export function actionSheet({ title, actions }) {
     body.append(h('div', { class: 'actions-list' }, actions.map((a) => h('button', {
       class: 'action' + (a.danger ? ' danger' : ''),
       onclick: () => { close(); setTimeout(() => a.run && a.run(), 120); },
-    }, a.icon ? icon(a.icon) : null, h('span', { text: a.label })))),
+    }, a.icon ? icon(a.icon) : null, h('span', {}, a.label, a.sub ? h('small', { class: 'a-sub', text: a.sub }) : null)))),
     h('button', { class: 'btn', text: 'Fermer', onclick: close }));
   } });
 }

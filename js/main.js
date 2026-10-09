@@ -30,6 +30,22 @@ for (const [id, href, ic, label] of TABS) {
     plus ? h('span', { class: 'bubble' }, icon(ic)) : icon(ic), h('span', { text: plus ? 'Nouveau' : label }));
   tabEls[id] = a; tabbar.append(a);
 }
+// Clavier ouvert : sur iPhone, une barre fixée en bas de l'écran « flotte » au milieu de l'écran quand le clavier s'affiche.
+// Tant qu'un champ de saisie est actif, la barre du bas est donc masquée ; elle revient dès que le clavier se ferme.
+{
+  const root = document.documentElement;
+  const NOT_TEXT = ['button', 'checkbox', 'radio', 'file', 'submit', 'range', 'color', 'reset', 'image'];
+  const isField = (el) => !!el && (el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || (el.tagName === 'INPUT' && !NOT_TEXT.includes(el.type)));
+  const setKbd = (on) => root.classList.toggle('kbd', on);
+  let timer = 0;
+  document.addEventListener('focusin', (ev) => { if (isField(ev.target)) { clearTimeout(timer); setKbd(true); } });
+  document.addEventListener('focusout', () => { clearTimeout(timer); timer = setTimeout(() => { if (!isField(document.activeElement)) setKbd(false); }, 150); });
+  const vv = window.visualViewport;
+  if (vv) {
+    const check = () => { if (window.innerHeight - vv.height > 120) setKbd(true); else if (!isField(document.activeElement)) setKbd(false); };
+    vv.addEventListener('resize', check); vv.addEventListener('scroll', check);
+  }
+}
 const setActive = (id) => { for (const [k, a] of Object.entries(tabEls)) { a.classList.toggle('on', k === id && k !== 'new'); a.toggleAttribute('aria-current', k === id); if (k !== id) a.removeAttribute('aria-current'); else a.setAttribute('aria-current', 'page'); } };
 
 let current = null, seq = 0;

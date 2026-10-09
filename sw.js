@@ -1,9 +1,9 @@
 // Service worker : installation de l'application et ouverture rapide. Il ne met en cache QUE les fichiers de l'application
 // (jamais les données de l'utilisateur, qui restent dans IndexedDB). Les modèles d'IA du laboratoire sont gérés par leurs bibliothèques.
-const V = 'dictaphone-v7-0.4.1';
+const V = 'dictaphone-v8-0.4.2';
 const SHELL = [
   './', 'index.html', 'app.css', 'manifest.webmanifest',
-  'js/main.js', 'js/ui.js', 'js/store.js', 'js/defaults.js', 'js/common.js', 'js/exports.js', 'js/pdf.js', 'js/backup.js', 'js/ai.js', 'js/version.js', 'js/import.js', 'js/pdfread.js', 'vendor/pdfjs/pdf.min.mjs', 'vendor/pdfjs/pdf.worker.min.mjs',
+  'js/main.js', 'js/ui.js', 'js/store.js', 'js/defaults.js', 'js/common.js', 'js/exports.js', 'js/pdf.js', 'js/backup.js', 'js/ai.js', 'js/version.js', 'js/import.js', 'js/pdfread.js', 'js/ttf.js', 'fonts/pdf/AbhayaLibre-Regular.ttf', 'fonts/pdf/OpenSans-Light.ttf', 'fonts/pdf/OpenSans-Regular.ttf', 'vendor/pdfjs/pdf.min.mjs', 'vendor/pdfjs/pdf.worker.min.mjs',
   'js/views-home.js', 'js/views-library.js', 'js/views-entretien.js', 'js/views-templates.js', 'js/views-settings.js',
   'db.js', 'audio.js',
   'fonts/abhaya-libre-latin-500-normal.woff2', 'fonts/abhaya-libre-latin-600-normal.woff2', 'fonts/abhaya-libre-latin-700-normal.woff2', 'fonts/dm-sans-latin-wght-normal.woff2',

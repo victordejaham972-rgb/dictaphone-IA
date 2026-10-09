@@ -3,7 +3,7 @@ import { h, icon, catIcon, toast, confirmDialog, promptDialog, actionSheet, shee
 import { CATEGORIES, catLabel, catInfo } from './defaults.js';
 import * as S from './store.js';
 import { go, topbar, pickFolder } from './common.js';
-import { fmtDate, fmtDateTime, reportText, copyText, downloadText, shareOrDownload, printReport, safeName, metaLine, reportPdfFile, validEmail, splitAddresses, mailtoHref, openMailto } from './exports.js';
+import { fmtDate, fmtDateTime, reportText, transcriptText, copyText, downloadText, downloadBlob, shareOrDownload, printReport, safeName, metaLine, docPdfFile, validEmail, splitAddresses, mailtoHref, openMailto } from './exports.js';
 import { AI_STATUS_TEXT } from './ai.js';
 import { usableModel } from './ia-local.js';
 import { buildWavBlob } from '../audio.js';
@@ -190,35 +190,74 @@ export async function ficheView({ params, query }) {
   requestAnimationFrame(fitTitle);
   const meta = h('div', { class: 'hint', style: { marginTop: 0 }, text: metaLine(e, folders) });
 
-  // Le PDF est préparé dès l'ouverture du menu : Safari n'accepte la feuille de partage que très peu de temps après un toucher.
-  const preparePdf = () => { const p = reportPdfFile(e, folders, tplName()); p.catch(() => {}); return p; };
+  // ----- exports -----
+  // Les PDF sont créés par l'application dès l'ouverture du menu : Safari n'accepte la feuille de partage que très peu de temps après un toucher.
+  const preparePdf = (kind) => { const p = docPdfFile(e, folders, tplName(), kind); p.catch(() => {}); return p; };
+  function readySheet(file) {
+    sheet({ title: 'PDF prêt', build(body, close) {
+      body.append(h('p', { class: 'hint', text: 'Le fichier est créé. Touchez le bouton pour ouvrir le menu de partage, puis choisissez « Enregistrer dans Fichiers ».' }),
+        h('div', { class: 'sheet-actions' },
+          h('button', { class: 'btn primary', onclick: async () => { const r = await shareOrDownload([file], e.title); if (r === 'refuse') { downloadBlob(file.name, file); toast('PDF enregistré'); } if (r !== 'annule') close(); } }, icon('share'), h('span', { text: 'Ouvrir le menu de partage' })),
+          h('button', { class: 'btn', text: 'Fermer', onclick: close })));
+    } });
+  }
   async function sharePdf(prepared) {
     try {
-      const res = await shareOrDownload([await (prepared || reportPdfFile(e, folders, tplName()))], e.title);
+      const file = await prepared;
+      const res = await shareOrDownload([file], e.title);
       if (res === 'telechargement') toast('PDF enregistré');
+      else if (res === 'refuse') readySheet(file);
     } catch (err) { toast('PDF impossible : ' + err.message, 5000); }
   }
-  async function exportReport() {
-    const text = reportText(e, folders, tplName());
-    const prepared = preparePdf();
-    actionSheet({ title: 'Exporter le compte rendu', actions: [
-      { label: 'Partager le PDF', icon: 'share', run: () => sharePdf(prepared) },
-      { label: 'Copier le texte', icon: 'copy', run: async () => toast((await copyText(text)) ? 'Compte rendu copié' : 'Copie impossible') },
-      { label: 'Fichier texte (.txt)', icon: 'doc', run: () => { downloadText(safeName(e.title) + '-compte-rendu.txt', text); toast('Fichier créé'); } },
-      { label: 'Imprimer…', icon: 'doc', run: () => printReport(e, folders, tplName()) },
+  function exportMenu() {
+    const hasT = S.hasTranscript(e), hasR = S.hasReport(e);
+    if (!hasT && !hasR) return toast('Rien à exporter pour le moment.');
+    const pT = hasT ? preparePdf('transcript') : null, pR = hasR ? preparePdf('report') : null;
+    actionSheet({ title: 'Exporter', actions: [
+      { label: 'Transcription en PDF', icon: 'doc', sub: hasT ? 'Tout le texte transcrit' : 'Aucune transcription pour le moment', run: () => (pT ? sharePdf(pT) : toast('Aucune transcription à exporter.')) },
+      { label: 'Compte rendu en PDF', icon: 'doc', sub: hasR ? 'Le compte rendu structuré' : 'À rédiger d\'abord', run: () => (pR ? sharePdf(pR) : toast('Rédigez d\'abord le compte rendu.')) },
+      { label: 'Envoyer par mail', icon: 'share', sub: 'Transcription ou compte rendu', run: mailChoice },
+      { label: 'Autres formats…', icon: 'copy', sub: 'Copier le texte, fichier .txt, imprimer', run: otherFormats },
     ] });
   }
+  function otherFormats() {
+    const rText = () => reportText(e, folders, tplName()), tText = () => transcriptText(e, folders);
+    actionSheet({ title: 'Autres formats', actions: [
+      S.hasTranscript(e) ? { label: 'Copier la transcription', icon: 'copy', run: async () => toast((await copyText(S.transcriptOf(e))) ? 'Transcription copiée' : 'Copie impossible') } : null,
+      S.hasTranscript(e) ? { label: 'Transcription en fichier texte (.txt)', icon: 'doc', run: () => { downloadText(safeName(e.title) + '-transcription.txt', tText()); toast('Fichier créé'); } } : null,
+      S.hasReport(e) ? { label: 'Copier le compte rendu', icon: 'copy', run: async () => toast((await copyText(rText())) ? 'Compte rendu copié' : 'Copie impossible') } : null,
+      S.hasReport(e) ? { label: 'Compte rendu en fichier texte (.txt)', icon: 'doc', run: () => { downloadText(safeName(e.title) + '-compte-rendu.txt', rText()); toast('Fichier créé'); } } : null,
+      S.hasReport(e) ? { label: 'Imprimer le compte rendu…', icon: 'doc', run: () => printReport(e, folders, tplName()) } : null,
+    ].filter(Boolean) });
+  }
   // Envoi par mail : la messagerie de l'appareil s'ouvre, l'utilisateur relit puis envoie lui-même.
-  function mailSheet() {
-    if (!S.hasReport(e)) return toast('Rédigez d\'abord le compte rendu.');
-    const prepared = preparePdf();
-    sheet({ title: 'Envoyer par mail', build(body, close) {
+  function mailChoice() {
+    const hasT = S.hasTranscript(e), hasR = S.hasReport(e);
+    if (!hasT && !hasR) return toast('Rien à envoyer pour le moment.');
+    actionSheet({ title: 'Envoyer par mail', actions: [
+      { label: 'La transcription', icon: 'doc', sub: hasT ? 'Le texte complet' : 'Aucune transcription pour le moment', run: () => (hasT ? mailSheet('transcript') : toast('Aucune transcription à envoyer.')) },
+      { label: 'Le compte rendu', icon: 'doc', sub: hasR ? 'Le compte rendu structuré' : 'À rédiger d\'abord', run: () => (hasR ? mailSheet('report') : toast('Rédigez d\'abord le compte rendu.')) },
+    ] });
+  }
+  function mailSheet(kind = 'report') {
+    const isT = kind === 'transcript';
+    if (isT ? !S.hasTranscript(e) : !S.hasReport(e)) return toast(isT ? 'Aucune transcription à envoyer.' : 'Rédigez d\'abord le compte rendu.');
+    const prepared = preparePdf(kind);
+    const full = isT ? transcriptText(e, folders) : reportText(e, folders, tplName());
+    const TOO_LONG = 1800;
+    sheet({ title: isT ? 'Envoyer la transcription' : 'Envoyer le compte rendu', build(body, close) {
       const to = h('input', { class: 'field', type: 'email', multiple: true, inputmode: 'email', placeholder: 'destinataire@entreprise.fr', autocapitalize: 'none', autocorrect: 'off', autocomplete: 'off', 'aria-label': 'Destinataire' });
-      const subj = h('input', { class: 'field', type: 'text', value: 'Compte rendu – ' + e.title, 'aria-label': 'Objet', maxlength: '200' });
+      const subj = h('input', { class: 'field', type: 'text', value: (isT ? 'Transcription – ' : 'Compte rendu – ') + e.title, 'aria-label': 'Objet', maxlength: '240' });
       const msg = h('textarea', { class: 'textarea', rows: '9', 'aria-label': 'Message', style: { minHeight: '180px' } });
-      msg.value = reportText(e, folders, tplName());
+      // Une transcription longue ne tient pas dans le corps d'un message : on propose le PDF en pièce jointe
+      const tooLongForBody = isT && full.length > TOO_LONG;
+      msg.value = tooLongForBody ? 'Bonjour,\n\nVeuillez trouver ci-joint la transcription : ' + e.title + '.\n\nCordialement' : full;
       const longNote = h('p', { class: 'hint', hidden: true });
-      const check = () => { const n = mailtoHref({ to: to.value, subject: subj.value, body: msg.value }).length; longNote.hidden = n < 1800; longNote.textContent = 'Message long : si votre messagerie le coupe, utilisez « Partager le PDF » ou « Copier le message ».'; };
+      const check = () => {
+        const n = mailtoHref({ to: to.value, subject: subj.value, body: msg.value }).length;
+        longNote.hidden = !(n >= TOO_LONG || tooLongForBody);
+        longNote.textContent = tooLongForBody ? 'La transcription est longue : elle n\'est pas collée dans le message. Utilisez d\'abord « Joindre le PDF » (menu de partage → Mail) pour l\'envoyer en pièce jointe.' : 'Message long : si votre messagerie le coupe, utilisez « Joindre le PDF » ou « Copier le message ».';
+      };
       for (const x of [to, subj, msg]) x.addEventListener('input', check);
       const open = () => {
         const bad = splitAddresses(to.value).filter((a) => !validEmail(a));
@@ -226,14 +265,16 @@ export async function ficheView({ params, query }) {
         openMailto(mailtoHref({ to: to.value, subject: subj.value, body: msg.value }));
         toast('Votre messagerie s\'ouvre : relisez puis envoyez.', 4500);
       };
+      const pdfBtn = h('button', { class: tooLongForBody ? 'btn primary' : 'btn', onclick: () => { close(); sharePdf(prepared); } }, icon('doc'), h('span', { text: 'Joindre le PDF (menu de partage)' }));
       body.append(
         h('div', { class: 'banner warn', style: { marginTop: '0' } }, icon('shield'), h('div', { text: 'Envoyez les documents confidentiels uniquement depuis une messagerie professionnelle autorisée par Ade-ci. Dictaphone IA n\'envoie rien lui-même : votre messagerie s\'ouvre avec le message prêt, et rien ne part sans votre validation.' })),
         h('label', { class: 'lbl', text: 'Destinataire (facultatif ici, modifiable dans la messagerie)' }), to,
         h('label', { class: 'lbl', text: 'Objet' }), subj,
         h('label', { class: 'lbl', text: 'Message (relisez et modifiez avant l\'ouverture)' }), msg, longNote,
         h('div', { class: 'sheet-actions' },
-          h('button', { class: 'btn primary', onclick: open }, icon('share'), h('span', { text: 'Ouvrir ma messagerie' })),
-          h('button', { class: 'btn', onclick: () => { close(); sharePdf(prepared); } }, icon('doc'), h('span', { text: 'Partager le PDF' })),
+          tooLongForBody ? pdfBtn : null,
+          h('button', { class: tooLongForBody ? 'btn' : 'btn primary', onclick: open }, icon('share'), h('span', { text: 'Ouvrir ma messagerie' })),
+          tooLongForBody ? null : pdfBtn,
           h('button', { class: 'btn', onclick: async () => toast((await copyText(msg.value)) ? 'Message copié' : 'Copie impossible') }, icon('copy'), h('span', { text: 'Copier le message' })),
           h('button', { class: 'btn', text: 'Annuler', onclick: close })));
       check();
@@ -241,13 +282,11 @@ export async function ficheView({ params, query }) {
   }
   function menu() {
     actionSheet({ title: e.title, actions: [
-      S.hasReport(e) ? { label: 'Envoyer le compte rendu par mail', icon: 'share', run: mailSheet } : null,
-      S.hasReport(e) ? { label: 'Exporter le compte rendu', icon: 'share', run: exportReport } : null,
-      S.hasTranscript(e) ? { label: 'Exporter la transcription (.txt)', icon: 'doc', run: () => downloadText(safeName(e.title) + '-transcription.txt', S.transcriptOf(e)) } : null,
+      { label: 'Exporter…', icon: 'share', run: exportMenu },
+      { label: 'Envoyer par mail', icon: 'share', run: mailChoice },
       { label: 'Supprimer l\'entretien', icon: 'trash', danger: true, run: deleteIt },
-    ].filter(Boolean) });
-  }
-  async function deleteIt() {
+    ] });
+  }  async function deleteIt() {
     const ok = await confirmDialog({ title: 'Supprimer cet entretien ?', danger: true, confirmLabel: 'Supprimer définitivement',
       message: `« ${e.title} » sera supprimé de cet appareil avec sa transcription, son compte rendu et son audio.\nCette action est irréversible. Pensez à faire une sauvegarde.` });
     if (!ok) return;
@@ -372,7 +411,8 @@ export async function ficheView({ params, query }) {
       h('div', { class: 'btn-row' },
         h('button', { class: 'btn small primary', onclick: paste }, icon('clipboard'), h('span', { text: 'Coller' })),
         h('button', { class: 'btn small', onclick: imp }, icon('upload'), h('span', { text: 'Importer' })),
-        h('button', { class: 'btn small', onclick: fix }, icon('edit'), h('span', { text: 'Corriger' }))),
+        h('button', { class: 'btn small', onclick: fix }, icon('edit'), h('span', { text: 'Corriger' })),
+        h('button', { class: 'btn small', onclick: exportMenu }, icon('share'), h('span', { text: 'Exporter' }))),
       histBtn, h('div', { style: { height: '12px' } }), ta, stats);
   }
   // ----- onglet Compte rendu -----
@@ -447,8 +487,8 @@ export async function ficheView({ params, query }) {
       } }, icon('plus'), h('span', { text: 'Ajouter une rubrique' })));
       box.append(h('div', { class: 'btn-row', style: { marginTop: '6px' } },
         h('button', { class: 'btn', onclick: async () => { const ok = S.hasReport(e) && (await copyText(reportText(e, folders, tplName()))); toast(ok ? 'Compte rendu copié' : 'Rien à copier pour le moment'); } }, icon('copy'), h('span', { text: 'Copier' })),
-        h('button', { class: 'btn', onclick: () => (S.hasReport(e) ? exportReport() : toast('Rédigez d\'abord le compte rendu.')) }, icon('share'), h('span', { text: 'Exporter' }))),
-        h('button', { class: 'btn primary', style: { marginTop: '10px' }, onclick: mailSheet }, icon('share'), h('span', { text: 'Envoyer par mail' })));
+        h('button', { class: 'btn', onclick: exportMenu }, icon('share'), h('span', { text: 'Exporter' }))),
+        h('button', { class: 'btn primary', style: { marginTop: '10px' }, onclick: mailChoice }, icon('share'), h('span', { text: 'Envoyer par mail' })));
     }
     renderBody();
     const prevRep = e.reportHistory[0];
