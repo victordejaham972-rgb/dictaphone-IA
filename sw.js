@@ -1,5 +1,5 @@
-﻿// Service worker : installation de l'application et ouverture rapide. Il ne met en cache QUE les fichiers de l'application
-// (jamais les donnÃ©es de l'utilisateur, qui restent dans IndexedDB). Les modÃ¨les d'IA du laboratoire sont gÃ©rÃ©s par leurs bibliothÃ¨ques.
+// Service worker : installation de l'application et ouverture rapide. Il ne met en cache QUE les fichiers de l'application
+// (jamais les données de l'utilisateur, qui restent dans IndexedDB). Les modèles d'IA du laboratoire sont gérés par leurs bibliothèques.
 const V = 'dictaphone-v12-0.6.0';
 const SHELL = [
   './', 'index.html', 'app.css', 'manifest.webmanifest',
@@ -8,15 +8,15 @@ const SHELL = [
   'db.js', 'audio.js',
   'fonts/abhaya-libre-latin-400-normal.woff2', 'fonts/abhaya-libre-latin-600-normal.woff2', 'fonts/open-sans-latin-wght-normal.woff2',
   'img/emblem-tile.png', 'img/emblem-ivory.png', 'icon-32.png', 'icon-180.png', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png',
-  // IA locale (page de rÃ©daction, moteur hÃ©bergÃ©, sonde)
-  'ia.html', 'ia-worker.js', 'ia-sonde.html', 'ia-sonde.js', // le moteur vendor/web-llm.js (6 Mo) est mis en cache Ã  la premiÃ¨re utilisation de l'IA, pas Ã  l'installation
+  // IA locale (page de rédaction, moteur hébergé, sonde)
+  'ia.html', 'ia-worker.js', 'ia-sonde.html', 'ia-sonde.js', // le moteur vendor/web-llm.js (6 Mo) est mis en cache à la première utilisation de l'IA, pas à l'installation
   'js/ia-core.js', 'js/ia-verify.js', 'js/ia-score.js', 'js/ia-models.js', 'js/ia-local.js', 'js/ia-page.js',
-  // laboratoire (expÃ©rimental)
+  // laboratoire (expérimental)
   'labo.html', 'labo.js', 'style.css', 'stt-worker.js', 'llm-worker.js', 'recorder-worklet.js', 'sonde.html', 'sonde.js',
 ];
 
 self.addEventListener('install', (e) => {
-  // Â« reload Â» : les fichiers sont lus sur le serveur et non dans le cache du navigateur (qui garde les anciens fichiers jusqu'Ã  10 minutes)
+  // « reload » : les fichiers sont lus sur le serveur et non dans le cache du navigateur (qui garde les anciens fichiers jusqu'à 10 minutes)
   e.waitUntil(caches.open(V).then((c) => c.addAll(SHELL.map((p) => new Request(p, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
@@ -33,8 +33,8 @@ self.addEventListener('fetch', (e) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin === location.origin) {
-    // Fichiers de l'application : rÃ©seau d'abord (mises Ã  jour), cache en secours hors connexion.
-    // Â« no-cache Â» : le navigateur vÃ©rifie auprÃ¨s du serveur (rÃ©ponse trÃ¨s lÃ©gÃ¨re si rien n'a changÃ©) au lieu de rÃ©utiliser pendant 10 minutes une ancienne copie.
+    // Fichiers de l'application : réseau d'abord (mises à jour), cache en secours hors connexion.
+    // « no-cache » : le navigateur vérifie auprès du serveur (réponse très légère si rien n'a changé) au lieu de réutiliser pendant 10 minutes une ancienne copie.
     e.respondWith(
       fetch(req, { cache: 'no-cache' }).then((r) => {
         if (r.ok) { const copy = r.clone(); caches.open(V).then((c) => c.put(req, copy)); }
@@ -42,7 +42,7 @@ self.addEventListener('fetch', (e) => {
       }).catch(() => caches.match(req).then((hit) => hit || (req.mode === 'navigate' ? caches.match('index.html') : Response.error())))
     );
   } else if (url.hostname === 'cdn.jsdelivr.net') {
-    // BibliothÃ¨ques du laboratoire uniquement (versions figÃ©es)
+    // Bibliothèques du laboratoire uniquement (versions figées)
     e.respondWith(
       caches.match(req).then((hit) => hit || fetch(req).then((r) => {
         const copy = r.clone();

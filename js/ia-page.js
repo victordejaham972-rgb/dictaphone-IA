@@ -145,7 +145,7 @@ const toSettings = (label = 'Ouvrir les réglages de l\'IA') => h('a', { class: 
       for (const x of existing) if (!merged.some((m) => m.id === x.id) && (x.content || '').trim()) merged.push(x);
       if (existing.some((x) => (x.content || '').trim())) e.reportHistory = S.pushHistory(e.reportHistory, { text: JSON.stringify(existing), reason: 'avant rédaction IA' });
       e.reportSections = merged; e.templateId = template.id;
-      e.iaInfo = { engine: runner.kind, model: runner.kind === 'server' ? runner.model : runner.model.model, label: runner.detail, date: Date.now(), seconds: Math.round(result.stats.seconds), calls: result.stats.calls || 0, rejected: result.stats.rejected || 0, flags: (result.flags || []).slice(0, 30), reviewed: false };
+      e.iaInfo = { engine: runner.kind, model: runner.kind === 'server' ? shortModel(runner.model) : runner.model.model, label: runner.detail, date: Date.now(), seconds: Math.round(result.stats.seconds), calls: result.stats.calls || 0, rejected: result.stats.rejected || 0, flags: (result.flags || []).slice(0, 30), reviewed: false };
       await S.saveEntretien(e);
       const check = verifyReport(merged.filter((m) => m.ia), transcript);
       try { localStorage.removeItem(MK); } catch {}
