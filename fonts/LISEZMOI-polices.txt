@@ -1,0 +1,4 @@
+﻿Polices hébergées dans l'application (licence SIL Open Font License 1.1, utilisation et redistribution libres, y compris commerciales) :
+- Abhaya Libre : voir LICENCE-Abhaya-Libre-OFL.txt (paquet @fontsource/abhaya-libre 5.3.0)
+- DM Sans : voir LICENCE-DM-Sans-OFL.txt (paquet @fontsource-variable/dm-sans 5.3.0)
+Ces polices sont les polices du site de l'entreprise ; elles sont servies depuis l'application, sans appel à un service externe.

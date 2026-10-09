@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://huggingface.co https://*.huggingface.co https://*.hf.co https://raw.githubusercontent.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Sonde IA</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>Sonde IA <small>test de l'IA locale</small></h1>
+  <p class="hint">Teste, un modèle à la fois, la rédaction d'un compte rendu par une IA exécutée sur ce téléphone, à partir d'une transcription <b>fictive</b> intégrée. Rien n'est envoyé : seuls les fichiers du modèle sont téléchargés. Si la page devient blanche, rouvrez-la : la sonde indique l'étape atteinte.</p>
+  <p><a href="./">← Retour à l'application</a></p>
+</header>
+<main>
+  <section id="crash" hidden></section>
+  <section><h2>Téléphone</h2><pre id="env"></pre></section>
+  <section>
+    <h2>Tests (du plus léger au plus lourd)</h2>
+    <p class="hint">iPhone branché, Wi-Fi, écran allumé, page au premier plan, aucune autre application ouverte. <b>Un seul test à la fois.</b> Après un plantage, redémarrez l'iPhone avant le test suivant. Chaque test dure plusieurs minutes.</p>
+    <div id="presets"></div>
+    <p id="status" class="status"></p>
+    <progress id="bar" max="1" value="0"></progress>
+  </section>
+  <section>
+    <h2>Résultats</h2>
+    <pre id="results">Aucun test pour l'instant.</pre>
+    <button id="copy">Copier le rapport complet</button>
+    <button id="reset">Effacer les résultats</button>
+    <textarea id="report" rows="6" readonly></textarea>
+  </section>
+</main>
+<script type="module" src="ia-sonde.js"></script>
+</body>
+</html>

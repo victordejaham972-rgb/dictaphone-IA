@@ -1,0 +1,9 @@
+﻿Composants tiers hébergés dans l'application (pas de chargement depuis un service externe au moment de l'exécution)
+
+web-llm.js
+  Projet   : @mlc-ai/web-llm, version 0.2.85 (publiée le 2026-09-08)
+  Licence  : Apache License 2.0 (http://www.apache.org/licenses/LICENSE-2.0)
+  Source   : https://github.com/mlc-ai/web-llm  (fichier lib/index.js du paquet npm, récupéré via cdn.jsdelivr.net)
+  SHA-256  : 341bae95822bfee1d0fd6a0e6cd2db8613bb8edf809390ac142fba36ec17792c
+  Rôle     : exécution locale de modèles de langage dans le navigateur (WebGPU). Le code ne contient aucun envoi de données vers un serveur de l'application.
+  Remarque : ce programme télécharge, au premier usage, les poids du modèle choisi (depuis huggingface.co) et sa bibliothèque de calcul (depuis github.com). Ces téléchargements ne contiennent aucune donnée de l'utilisateur.

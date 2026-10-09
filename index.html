@@ -4,145 +4,28 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Dictaphone IA</title>
-  <meta name="theme-color" content="#101418">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; media-src 'self' blob:; connect-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
+  <meta name="description" content="Dictaphone IA – entretiens, transcriptions et comptes rendus pour Ade-ci Family Office">
+  <meta name="theme-color" content="#F6F0E7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#071A33" media="(prefers-color-scheme: dark)">
+  <meta name="color-scheme" content="light dark">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Dictaphone IA">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="format-detection" content="telephone=no">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="icon-180.png">
-  <link rel="icon" href="icon-192.png">
-  <link rel="stylesheet" href="style.css">
+  <link rel="apple-touch-icon" sizes="180x180" href="icon-180.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="icon-32.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+  <link rel="stylesheet" href="app.css">
 </head>
 <body>
-<header>
-  <h1>Dictaphone IA <small>prototype <span id="version"></span></small></h1>
-  <p class="hint">Test de faisabilité. Tout est traité sur ce téléphone. Utilisez uniquement des enregistrements fictifs.</p>
-</header>
-
-<main>
-  <section id="crash" hidden></section>
-
-  <details id="prev-wrap" hidden>
-    <summary>Journal de la session précédente (utile après un plantage)</summary>
-    <pre id="prev-log"></pre>
-  </details>
-
-  <section>
-    <h2>1. Diagnostic du téléphone</h2>
-    <button id="btn-diag">Lancer le diagnostic</button>
-    <pre id="diag"></pre>
-  </section>
-
-  <section>
-    <h2>2. Audio</h2>
-    <div class="row">
-      <button id="btn-rec" class="primary">Enregistrer</button>
-      <button id="btn-stop" disabled>Arrêter</button>
-    </div>
-    <div class="meter"><div id="level"></div></div>
-    <p id="rec-status" class="status">Prêt.</p>
-    <label class="file">Ou importer un fichier audio
-      <input id="file" type="file" accept="audio/*,.wav,.m4a,.mp3,.aac,.ogg,.flac">
-    </label>
-    <label class="check"><input id="keep-orig" type="checkbox" checked> Conserver aussi le fichier d'origine (prend plus de place ; ignoré au-delà de 300 Mo)</label>
-    <progress id="imp-bar" max="1" value="0" hidden></progress>
-    <h3>Enregistrements sur ce téléphone</h3>
-    <div class="row">
-      <select id="sessions"></select>
-      <button id="btn-del">Supprimer</button>
-    </div>
-    <p id="sess-info" class="status"></p>
-  </section>
-
-  <section>
-    <h2>3. Réécoute</h2>
-    <p id="pl-title" class="status">Aucun enregistrement sélectionné.</p>
-    <audio id="audio" preload="metadata" playsinline></audio>
-    <input id="seek" type="range" min="0" max="0" step="1" value="0" aria-label="Position dans l'enregistrement" disabled>
-    <div class="timebar"><span id="t-cur">00:00:00</span><span id="t-dur">00:00:00</span></div>
-    <div class="row">
-      <button id="b-back" disabled hidden>−10 s</button>
-      <button id="b-play" class="primary" disabled>Lecture</button>
-      <button id="b-fwd" disabled hidden>+10 s</button>
-    </div>
-    <label hidden>Vitesse de lecture
-      <select id="speed">
-        <option value="0.75">0,75×</option><option value="1" selected>1×</option><option value="1.25">1,25×</option>
-        <option value="1.5">1,5×</option><option value="1.75">1,75×</option><option value="2">2×</option>
-      </select>
-    </label>
-    <button id="b-mark" disabled hidden>Ajouter un marque-page ici</button>
-    <ul id="marks" hidden></ul>
-    <h3 hidden>Exporter et sauvegarder</h3>
-    <button id="b-exp-wav" disabled hidden>Exporter l'audio (WAV 16 kHz)</button>
-    <button id="b-exp-orig" hidden>Exporter le fichier d'origine importé</button>
-    <button id="b-backup" disabled hidden>Sauvegarder la réunion (audio + texte)</button>
-    <label class="file" hidden>Restaurer texte, compte rendu et marque-pages (fichier .json) dans l'enregistrement sélectionné
-      <input id="restore" type="file" accept=".json,application/json">
-    </label>
-    <p id="store-info" class="status"></p>
-  </section>
-
-  <section>
-    <h2>4. Transcription (Whisper)</h2>
-    <label>Modèle
-      <select id="stt-model">
-        <option value="onnx-community/whisper-tiny" selected>Whisper tiny (seul réglage validé sur iPhone 14)</option>
-        <option value="onnx-community/whisper-base">Whisper base (plante sur iPhone 14)</option>
-        <option value="onnx-community/whisper-small">Whisper small (trop lourd pour iPhone 14, non testé)</option>
-      </select>
-    </label>
-    <label>Moteur de calcul
-      <select id="stt-device">
-        <option value="wasm" selected>WASM (validé sur iPhone 14 avec Tiny)</option>
-        <option value="webgpu">WebGPU (non validé sur iPhone 14)</option>
-      </select>
-    </label>
-    <div class="row">
-      <button id="btn-stt" class="primary" disabled>Transcrire</button>
-      <button id="btn-stt-stop" disabled>Pause</button>
-    </div>
-    <progress id="stt-bar" max="1" value="0"></progress>
-    <p id="stt-status" class="status"></p>
-    <p class="hint">Touchez une phrase pour écouter ce passage.</p>
-    <div id="transcript" class="tlist"><span class="hint">La transcription apparaîtra ici.</span></div>
-    <button id="btn-dl-tr" disabled>Enregistrer la transcription (.txt)</button>
-  </section>
-
-  <section>
-    <h2>5. Compte rendu (IA locale)</h2>
-    <label>Modèle
-      <select id="llm-model">
-        <option value="Qwen2.5-1.5B-Instruct-q4f16_1-MLC" selected>Qwen2.5 1,5 Md (Apache 2.0) – recommandé</option>
-        <option value="Qwen2.5-1.5B-Instruct-q4f32_1-MLC">Qwen2.5 1,5 Md – variante compatible (plus lourde)</option>
-        <option value="Llama-3.2-1B-Instruct-q4f16_1-MLC">Llama 3.2 1 Md (licence Llama)</option>
-        <option value="Llama-3.2-3B-Instruct-q4f16_1-MLC">Llama 3.2 3 Md (licence Llama, risque mémoire)</option>
-        <option value="Qwen2.5-3B-Instruct-q4f16_1-MLC">Qwen2.5 3 Md (licence recherche : test seulement)</option>
-      </select>
-    </label>
-    <label>Taille d'un bloc de transcription (caractères)
-      <input id="blocksize" type="number" value="5000" min="1500" max="8000" step="500">
-    </label>
-    <div class="row">
-      <button id="btn-llm" class="primary" disabled>Générer le compte rendu</button>
-      <button id="btn-llm-stop" disabled>Annuler</button>
-    </div>
-    <progress id="llm-bar" max="1" value="0"></progress>
-    <p id="llm-status" class="status"></p>
-    <textarea id="summary" rows="14" readonly placeholder="Le compte rendu apparaîtra ici."></textarea>
-    <button id="btn-dl-sum" disabled>Enregistrer le compte rendu (.txt)</button>
-  </section>
-
-  <section>
-    <h2>6. Rapport de mesures</h2>
-    <p class="hint">Après vos tests, appuyez sur « Générer », puis copiez le texte et envoyez-le-moi.</p>
-    <button id="btn-report">Générer le rapport</button>
-    <textarea id="report" rows="8" readonly></textarea>
-    <h3>Journal</h3>
-    <pre id="log"></pre>
-  </section>
-</main>
-
-<script type="module" src="app.js"></script>
+  <div id="app" aria-live="polite"></div>
+  <div class="tabbar"><nav id="tabbar" aria-label="Navigation principale"></nav></div>
+  <div id="print-root" aria-hidden="true"></div>
+  <noscript><p style="padding:24px">Dictaphone IA nécessite JavaScript.</p></noscript>
+  <script type="module" src="js/main.js"></script>
 </body>
 </html>
