@@ -6,6 +6,7 @@ import { libraryView } from './views-library.js';
 import { newView, ficheView } from './views-entretien.js';
 import { templatesView, templateEditView } from './views-templates.js';
 import { settingsView } from './views-settings.js';
+import { startUpdateWatcher, forceUpdate } from './update.js';
 
 const routes = [
   [/^\/?$/, homeView, 'home'],
@@ -88,5 +89,15 @@ window.addEventListener('unhandledrejection', (e) => { console.error('Erreur :',
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
   } catch (err) { app.replaceChildren(errorView(err).el); return; }
   await render();
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  // Service worker : `updateViaCache: 'none'` = le fichier sw.js est toujours vérifié auprès du serveur (jamais lu dans le cache du navigateur)
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(() => {});
+
+// Nouvelle version publiée : bandeau « Mettre à jour » (la mise à jour ne supprime aucune donnée)
+startUpdateWatcher((pub) => {
+  const bar = h('div', { class: 'update-banner', role: 'status' },
+    h('span', { text: `Une nouvelle version (${pub}) est disponible.` }),
+    h('button', { class: 'btn small primary', text: 'Mettre à jour', onclick: async (ev) => { ev.target.disabled = true; ev.target.textContent = 'Mise à jour…'; try { await forceUpdate(); } catch { ev.target.disabled = false; ev.target.textContent = 'Mettre à jour'; toast('Mise à jour impossible : vérifiez la connexion.', 4500); } } }),
+    h('button', { class: 'iconbtn', 'aria-label': 'Plus tard', text: '×', onclick: () => bar.remove() }));
+  document.body.append(bar);
+});
 })();

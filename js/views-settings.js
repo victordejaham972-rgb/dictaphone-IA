@@ -4,6 +4,7 @@ import * as S from './store.js';
 import * as B from './backup.js';
 import { go } from './common.js';
 import { APP_VERSION } from './version.js';
+import * as Up from './update.js';
 import { shareOrDownload } from './exports.js';
 import { AI_STATUS_TEXT } from './ai.js';
 import { modelStatus, localAiSettings, setLocalAi } from './ia-local.js';
@@ -187,6 +188,16 @@ export async function settingsView({ query }) {
           h('p', { class: 'hint', style: { marginTop: 0 }, text: 'Espace réservé aux tests techniques (enregistrement, transcription Whisper, IA locale). Non validé sur iPhone : peut faire planter la page.' }),
           h('a', { class: 'btn', href: 'labo.html' }, icon('flask'), h('span', { text: 'Ouvrir le laboratoire' })))),
 
+      group('Mise à jour de l\'application',
+        h('div', { class: 'card' },
+          h('div', { class: 'kv' }, h('span', { text: 'Version affichée' }), h('span', { text: APP_VERSION })),
+          h('div', { class: 'kv' }, h('span', { text: 'Version publiée' }), upPub),
+          h('div', { class: 'kv' }, h('span', { text: 'Fonctionnement hors connexion' }), upSw),
+          upMsg,
+          h('div', { class: 'btn-row', style: { marginTop: '10px' } },
+            h('button', { class: 'btn small', onclick: doCheck }, icon('down'), h('span', { text: 'Rechercher une mise à jour' })),
+            h('button', { class: 'btn small primary', onclick: doForce }, icon('sparkle'), h('span', { text: 'Mettre à jour maintenant' }))),
+          h('p', { class: 'hint', text: 'La mise à jour renouvelle uniquement les fichiers du programme. Vos entretiens, comptes rendus, trames et sauvegardes ne sont pas touchés. L\'icône reste en place.' }))),
       group('À propos',
         h('div', { class: 'card' },
           h('div', { class: 'kv' }, h('span', { text: 'Version' }), h('span', { text: APP_VERSION })),
@@ -194,7 +205,23 @@ export async function settingsView({ query }) {
       h('div', { style: { height: '12px' } }));
     drawStorage();
   };
+  // ----- mise à jour de l'application -----
+  const upPub = h('span', { text: '…' }), upSw = h('span', { text: '…' }), upMsg = h('p', { class: 'hint', hidden: true });
+  const say = (t) => { upMsg.hidden = !t; upMsg.textContent = t || ''; };
+  async function doCheck() {
+    say('Vérification en cours…');
+    try {
+      const r = await Up.checkForUpdate(), st = await Up.swStatus();
+      upPub.textContent = r.published || '?';
+      upSw.textContent = !st.supported ? 'non disponible' : st.active ? 'actif' + (st.waiting ? ' (mise à jour en attente)' : '') : st.installing ? 'installation…' : 'inactif';
+      say(r.outdated ? `Une version plus récente (${r.published}) est disponible. Touchez « Mettre à jour maintenant ».` : `Votre application est à jour (${r.running}).`);
+    } catch (err) { upPub.textContent = 'injoignable'; say('Vérification impossible : ' + err.message); }
+  }
+  async function doForce() {
+    try { await Up.forceUpdate((t) => say(t)); } catch (err) { say('Mise à jour impossible : ' + err.message + '. Vos données ne sont pas modifiées.'); }
+  }
   render();
+  doCheck();
   if (query.do === 'sauvegarde') setTimeout(backupFlow, 300);
   return { el };
 }

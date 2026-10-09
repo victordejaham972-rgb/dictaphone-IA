@@ -211,3 +211,9 @@ ul.plain { margin: 6px 0 0; padding-left: 18px; } ul.plain li { margin: 4px 0; }
 }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 @media (min-width: 760px) { .view { padding-top: 28px; } }
+
+/* ----- Bandeau de mise à jour ----- */
+.update-banner { position: fixed; left: 12px; right: 12px; bottom: calc(var(--tab-h) + 10px + env(safe-area-inset-bottom)); z-index: 30; max-width: 696px; margin: 0 auto; display: flex; align-items: center; gap: 10px; background: var(--navy); color: #F6F0E7; border-radius: 16px; padding: 10px 10px 10px 16px; box-shadow: var(--shadow); font-size: 14.5px; }
+.update-banner span { flex: 1; }
+.update-banner .iconbtn { width: 36px; height: 36px; color: #F6F0E7; font-size: 24px; line-height: 1; }
+html.kbd .update-banner { display: none; }
