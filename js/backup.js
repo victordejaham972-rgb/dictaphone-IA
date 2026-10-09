@@ -61,6 +61,8 @@ const idOk = (v) => typeof v === 'string' && /^[\w-]{1,64}$/.test(v);
 const num = (v, d = 0) => (Number.isFinite(v) ? v : d);
 const catOk = (v) => (CATEGORIES.some((c) => c.id === v) ? v : null);
 
+const flg = (l) => (Array.isArray(l) ? l.slice(0, 40).filter((f) => f && typeof f.text === 'string').map((f) => ({ kind: str(f.kind, 30), text: str(f.text, 600) })) : []);
+const evid = (l) => l.slice(0, 80).filter((ev) => ev && typeof ev.t === 'string').map((ev) => ({ t: str(ev.t, 600), st: str(ev.st, 20), q: (Array.isArray(ev.q) ? ev.q : []).slice(0, 3).map((x) => str(x, 320)), n: (Array.isArray(ev.n) ? ev.n : []).slice(0, 3).filter((x) => Number.isFinite(x)) }));
 const hist = (l) => (Array.isArray(l) ? l.slice(0, 5).filter((v) => v && typeof v.text === 'string' && v.text.trim()).map((v) => ({ text: v.text.slice(0, 3000000), reason: str(v.reason, 60), source: str(v.source, 200), date: num(v.date, Date.now()) })) : []);
 // Ne garde que les champs connus et de type valide (le contenu du fichier n'est jamais exécuté ni inséré tel quel).
 export function sanitize(obj) {
@@ -79,7 +81,8 @@ export function sanitize(obj) {
     category: catOk(s.category), folderId: idOk(s.folderId) ? s.folderId : null, date: num(s.date, num(s.createdAt, Date.now())),
     templateId: idOk(s.templateId) ? s.templateId : null,
     transcript: typeof s.transcript === 'string' ? s.transcript.slice(0, 3000000) : null,
-    reportSections: Array.isArray(s.reportSections) ? s.reportSections.slice(0, 80).map((r) => ({ id: idOk(r && r.id) ? r.id : uid('r'), title: str(r && r.title, 200), content: str(r && r.content) })) : null,
+    reportSections: Array.isArray(s.reportSections) ? s.reportSections.slice(0, 80).map((r) => ({ id: idOk(r && r.id) ? r.id : uid('r'), title: str(r && r.title, 200), content: str(r && r.content), ...(r && r.ia ? { ia: true } : {}), ...(r && r.edited ? { edited: true } : {}), ...(r && Array.isArray(r.evidence) ? { evidence: evid(r.evidence) } : {}), ...(r && Array.isArray(r.flags) ? { flags: flg(r.flags) } : {}) })) : null,
+    ...(s.iaInfo && typeof s.iaInfo === 'object' ? { iaInfo: { engine: str(s.iaInfo.engine, 20), model: str(s.iaInfo.model, 120), label: str(s.iaInfo.label, 200), date: num(s.iaInfo.date, 0), seconds: num(s.iaInfo.seconds, 0), calls: num(s.iaInfo.calls, 0), rejected: num(s.iaInfo.rejected, 0), flags: flg(s.iaInfo.flags), reviewed: !!s.iaInfo.reviewed, ...(s.iaInfo.reviewedAt ? { reviewedAt: num(s.iaInfo.reviewedAt, 0) } : {}) } } : {}),
     who: str(s.who, 120), subject: str(s.subject, 160), titleAuto: !!s.titleAuto,
     transcriptHistory: hist(s.transcriptHistory), reportHistory: hist(s.reportHistory),
     summary: str(s.summary), source: str(s.source, 20) || 'texte',

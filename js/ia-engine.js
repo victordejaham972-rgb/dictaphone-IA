@@ -5,6 +5,7 @@
 // Les réglages (adresse, modèle) sont conservés sur l'appareil, comme les autres réglages.
 import { getSettings, setSetting } from './store.js';
 
+export const shortModel = (m) => String(m || '').replace(/[A-Za-z]:\\[^·]*\\([^\\·]+?)(\.gguf)?(\s*·|$)/, '$1$3').split(/[\\/]/).pop().replace(/\.gguf/i, '');
 export const DEFAULT_URL = 'http://127.0.0.1:11434';          // Ollama
 export const PRESETS = [
   { label: 'Ollama', url: 'http://127.0.0.1:11434' },

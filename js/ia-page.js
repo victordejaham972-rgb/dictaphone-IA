@@ -7,7 +7,7 @@ import { generateReport, withTimeout } from './ia-core.js';
 import { generateReportV2, annotateReport } from './ia-pipeline.js';
 import { verifyReport } from './ia-verify.js';
 import { usableModel, setLocalAi, GEN, strategyFor } from './ia-local.js';
-import { engineSettings, probeServer, serverChat } from './ia-engine.js';
+import { engineSettings, probeServer, serverChat, shortModel } from './ia-engine.js';
 import { catLabel } from './defaults.js';
 
 const app = document.getElementById('app');
@@ -49,7 +49,7 @@ const toSettings = (label = 'Ouvrir les réglages de l\'IA') => h('a', { class: 
     if (!pr.ok) return showMessage('Le moteur local ne répond pas', pr.error, h('p', { class: 'hint', text: 'Adresse configurée : ' + eng.url }), h('button', { class: 'btn', style: { marginTop: '8px' }, onclick: () => location.reload() }, h('span', { text: 'Réessayer' })), toSettings());
     const model = eng.model && pr.models.includes(eng.model) ? eng.model : pr.models[0];
     if (!model) return showMessage('Aucun modèle installé', 'Le moteur répond mais aucun modèle n\'est installé. Installez un modèle (voir l\'aide dans les réglages de l\'IA).', toSettings());
-    runner = { kind: 'server', label: 'Moteur sur cet ordinateur', detail: `${model} · ${pr.flavor === 'ollama' ? 'Ollama' : 'serveur local'}`, model, chat: serverChat({ url: pr.url, model, flavor: pr.flavor }) };
+    runner = { kind: 'server', label: 'Moteur sur cet ordinateur', detail: `${shortModel(model)} · ${pr.flavor === 'ollama' ? 'Ollama' : 'serveur local'}`, model, chat: serverChat({ url: pr.url, model, flavor: pr.flavor }) };
   } else if (eng.kind === 'webgpu') {
     const um = usableModel();
     if (!um) return showMessage('IA du navigateur non disponible', 'Aucun modèle n\'est validé et activé sur cet appareil. Passez par les réglages de l\'IA.', toSettings());

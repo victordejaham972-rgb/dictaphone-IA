@@ -6,7 +6,7 @@ import { go, topbar, pickFolder } from './common.js';
 import { fmtDate, fmtDateTime, reportText, transcriptText, copyText, downloadText, downloadBlob, shareOrDownload, printReport, safeName, metaLine, docPdfFile, validEmail, splitAddresses, mailtoHref, openMailto } from './exports.js';
 import { AI_STATUS_TEXT } from './ai.js';
 import { usableModel } from './ia-local.js';
-import { engineSettings } from './ia-engine.js';
+import { engineSettings, shortModel } from './ia-engine.js';
 import { assistReport } from './assist.js';
 import { buildWavBlob } from '../audio.js';
 import { cleanText, pickFile, readImport, previewImport, words as wordsOf } from './import.js';
@@ -230,7 +230,14 @@ export async function ficheView({ params, query }) {
       else if (res === 'refuse') readySheet(file);
     } catch (err) { toast('PDF impossible : ' + err.message, 5000); }
   }
-  // Menu unique « Partager » : PDF (créés sur l'appareil), mail, copie et fichier texte
+  // Un compte rendu généré par l'IA et non relu ne part pas sans confirmation explicite (PDF, mail, copie, fichier, impression)
+  async function guardReview(fn) {
+    if (e.iaInfo && !e.iaInfo.reviewed && S.hasReport(e)) {
+      const ok = await confirmDialog({ title: 'Compte rendu non relu', message: 'Ce compte rendu a été généré par l\'IA et n\'est pas encore marqué comme relu. Une relecture humaine (montants, noms, dates, décisions) est indispensable avant tout usage professionnel.\nContinuer quand même ?', confirmLabel: 'Continuer quand même' });
+      if (!ok) return;
+    }
+    return fn();
+  }  // Menu unique « Partager » : PDF (créés sur l'appareil), mail, copie et fichier texte
   function shareMenu() {
     const hasT = S.hasTranscript(e), hasR = S.hasReport(e);
     if (!hasT && !hasR) return toast('Rien à partager pour le moment : ajoutez d\'abord du texte.', 4200);
@@ -243,11 +250,11 @@ export async function ficheView({ params, query }) {
     };
     actionSheet({ title: 'Partager', lead: 'Les PDF sont créés sur l\'appareil, rien n\'est envoyé automatiquement.', actions: [
       { label: 'Transcription en PDF', icon: 'doc', sub: hasT ? 'Tout le texte transcrit' : 'Aucune transcription pour le moment', run: () => (pT ? sharePdf(pT) : toast('Aucune transcription à exporter.')) },
-      { label: 'Compte rendu en PDF', icon: 'doc', sub: hasR ? 'Le compte rendu structuré' : 'À rédiger d\'abord', run: () => (pR ? sharePdf(pR) : toast('Rédigez d\'abord le compte rendu.')) },
+      { label: 'Compte rendu en PDF', icon: 'doc', sub: hasR ? 'Le compte rendu structuré' : 'À rédiger d\'abord', run: () => (pR ? guardReview(() => sharePdf(pR)) : toast('Rédigez d\'abord le compte rendu.')) },
       { label: 'Envoyer par mail', icon: 'mail', sub: 'Transcription ou compte rendu', more: true, run: mailChoice },
-      { label: 'Copier le texte', icon: 'copy', run: () => which('Copier quel texte ?', async (k) => toast((await copyText(textOf(k))) ? 'Texte copié' : 'Copie impossible')) },
+      { label: 'Copier le texte', icon: 'copy', run: () => which('Copier quel texte ?', (k) => (k === 'report' ? guardReview : (fn) => fn())(async () => toast((await copyText(textOf(k))) ? 'Texte copié' : 'Copie impossible'))) },
       { label: 'Fichier texte (.txt)', icon: 'txt', run: () => which('Quel fichier texte ?', (k) => { downloadText(safeName(e.title) + (k === 'transcript' ? '-transcription.txt' : '-compte-rendu.txt'), k === 'transcript' ? transcriptText(e, folders) : textOf(k)); toast('Fichier créé'); }) },
-      hasR ? { label: 'Imprimer le compte rendu…', icon: 'doc', run: () => printReport(e, folders, tplName()) } : null,
+      hasR ? { label: 'Imprimer le compte rendu…', icon: 'doc', run: () => guardReview(() => printReport(e, folders, tplName())) } : null,
     ].filter(Boolean) });
   }  // Envoi par mail : la messagerie de l'appareil s'ouvre, l'utilisateur relit puis envoie lui-même.
   function mailChoice() {
@@ -255,7 +262,7 @@ export async function ficheView({ params, query }) {
     if (!hasT && !hasR) return toast('Rien à envoyer pour le moment.');
     actionSheet({ title: 'Envoyer par mail', actions: [
       { label: 'La transcription', icon: 'doc', sub: hasT ? 'Le texte complet' : 'Aucune transcription pour le moment', run: () => (hasT ? mailSheet('transcript') : toast('Aucune transcription à envoyer.')) },
-      { label: 'Le compte rendu', icon: 'doc', sub: hasR ? 'Le compte rendu structuré' : 'À rédiger d\'abord', run: () => (hasR ? mailSheet('report') : toast('Rédigez d\'abord le compte rendu.')) },
+      { label: 'Le compte rendu', icon: 'doc', sub: hasR ? 'Le compte rendu structuré' : 'À rédiger d\'abord', run: () => (hasR ? guardReview(() => mailSheet('report')) : toast('Rédigez d\'abord le compte rendu.')) },
     ] });
   }
   function mailSheet(kind = 'report') {
@@ -477,12 +484,12 @@ export async function ficheView({ params, query }) {
     const ia = h('div', { class: 'card ia-card' },
       h('div', { class: 'rt serif', style: { fontSize: '20px', color: 'var(--ink)' } }, h('span', { text: 'Rédaction par l\'IA' }), h('span', { class: 'badge', text: ready ? 'Locale' : 'Non configurée' })),
       h('p', { class: 'hint', text: ready
-        ? (eng.kind === 'server' ? `Moteur sur cet ordinateur${eng.model ? ' · ' + eng.model : ''}. La transcription ne quitte pas l'ordinateur ; le résultat est un brouillon relié à la transcription, à relire.` : `Moteur du navigateur · ${um.label}. La transcription reste sur l'appareil ; le résultat est un brouillon à relire.`)
+        ? (eng.kind === 'server' ? `Moteur sur cet ordinateur${eng.model ? ' · ' + shortModel(eng.model) : ''}. La transcription ne quitte pas l'ordinateur ; le résultat est un brouillon relié à la transcription, à relire.` : `Moteur du navigateur · ${um.label}. La transcription reste sur l'appareil ; le résultat est un brouillon à relire.`)
         : 'Aucune IA n\'est configurée sur cet appareil. Sur PC : un moteur local gratuit (voir les Réglages). Sur iPhone : l\'assistant ci-dessous classe les passages de la transcription par rubrique, sans IA.' }),
       h('div', { style: { display: 'grid', gap: '8px' } },
         ready ? h('button', { class: 'btn primary', disabled: !hasT, onclick: async () => { await saver.flush(); location.href = 'ia.html?e=' + e.id; } }, icon('sparkle'), h('span', { text: 'Générer avec l\'IA' }))
           : h('a', { class: 'btn primary', href: '#/reglages?open=ia' }, icon('gear'), h('span', { text: 'Configurer l\'IA' })),
-        h('button', { class: 'btn', disabled: !hasT, onclick: () => assistSheet() }, icon('edit'), h('span', { text: 'Assistant de structuration (sans IA)' }))),
+        h('button', { class: 'btn', disabled: !hasT, onclick: () => assistSheet() }, icon('edit'), h('span', { text: 'Assistant sans IA' }))),
       hasT ? null : h('p', { class: 'hint', text: 'Ajoutez d\'abord la transcription.' }));
 
     // Assistant sans IA : propose les phrases de la transcription classées par rubrique ; l'utilisateur coche ce qu'il garde.

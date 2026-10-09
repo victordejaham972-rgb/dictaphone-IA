@@ -138,9 +138,13 @@ export function parseFacts(text, nSections, template = null) {
     const theme = THEMES.find((t) => themeW && (themeW === t || themeW.startsWith(t.slice(0, 5)))) || null;
     const tnorm = normText(parts[1]);
     const type = (TYPE_MAP.find(([re]) => re.test(tnorm)) || [0, 'FAIT'])[1];
-    const info = parts[2].replace(/^["«]\s*|\s*["»]$/g, '').trim();
+    let info = parts[2].replace(/^["«]\s*|\s*["»]$/g, '').trim();
+    // numéros de phrases collés à la fin du texte (« …à 14 heures, 69 » ou « … [69] ») : ce sont des références, pas du texte
+    const tail = info.match(/(?:\s*\[\s*(?:\d{1,3}|(?!19|20)\d{4})(?:\s*[,;]\s*(?:\d{1,3}|(?!19|20)\d{4}))*\s*\]|\s*[,;]\s*(?:\d{1,3}|(?!19|20)\d{4})(?:\s*[,;]\s*(?:\d{1,3}|(?!19|20)\d{4}))*)\s*\.?\s*$/);
+    const tailRefs = tail ? (tail[0].match(/\d+/g) || []).map(Number) : [];
+    if (tail) info = info.slice(0, tail.index).trim();
     if (info.length < 8) continue;
-    const refs = ((parts[3] || '').match(/\d+/g) || []).map(Number);
+    const refs = [...((parts[3] || '').match(/\d+/g) || []).map(Number), ...tailRefs];
     let sec = secN >= 1 && secN <= nSections ? secN - 1 : -1;
     if (sec < 0 && theme && template) sec = sectionForTheme(theme, template);
     facts.push({ sec, theme, type, text: info, refs });

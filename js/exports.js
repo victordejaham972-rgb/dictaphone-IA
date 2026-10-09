@@ -15,6 +15,7 @@ export function reportText(e, folders, templateName) {
   const parts = [e.title, metaLine(e, folders)];
   if (templateName) parts.push('Trame : ' + templateName);
   parts.push('');
+  if (e.iaInfo && !e.iaInfo.reviewed) parts.push('[BROUILLON généré par IA : relecture humaine requise avant utilisation]', '');
   for (const s of reportOf(e)) {
     if (!(s.content || '').trim()) continue;
     parts.push(s.title.toUpperCase(), s.content.trim(), '');
@@ -76,7 +77,7 @@ export async function docPdfFile(e, folders, templateName, kind = 'report') {
   const sections = isT ? [{ title: '', content: transcriptOf(e) }] : reportOf(e);
   const blob = await makePdf({
     kind: isT ? 'Transcription' : 'Compte rendu', title: e.title, rows: docRows(e, folders, templateName, kind), sections,
-    footer: isT ? 'Ade-ci Family Office · Transcription brute, non relue · Document confidentiel' : 'Ade-ci Family Office · Document confidentiel · Compte rendu rédigé et relu par l\'utilisateur',
+    footer: isT ? 'Ade-ci Family Office · Transcription brute, non relue · Document confidentiel' : (e.iaInfo ? (e.iaInfo.reviewed ? 'Ade-ci Family Office · Document confidentiel · Rédigé avec l\'assistance d\'une IA locale, relu par l\'utilisateur' : 'Ade-ci Family Office · Document confidentiel · BROUILLON généré par IA : relecture humaine requise') : 'Ade-ci Family Office · Document confidentiel · Compte rendu rédigé et relu par l\'utilisateur'),
   });
   return new File([blob], safeName(e.title) + (isT ? '-transcription.pdf' : '-compte-rendu.pdf'), { type: 'application/pdf' });
 }

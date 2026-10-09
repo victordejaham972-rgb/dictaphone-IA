@@ -1,7 +1,7 @@
 // Réglages : intelligence artificielle (moteur sur cet ordinateur, moteur du navigateur, aide à l'installation, essai sur transcription fictive).
 import { h, icon, toast, sheet } from './ui.js';
 import * as S from './store.js';
-import { engineSettings, setEngine, probeServer, serverChat, PRESETS, cleanUrl } from './ia-engine.js';
+import { engineSettings, setEngine, probeServer, serverChat, PRESETS, cleanUrl, shortModel } from './ia-engine.js';
 import { modelStatus, localAiSettings, setLocalAi } from './ia-local.js';
 import { generateReportV2 } from './ia-pipeline.js';
 import { DEMO_TRANSCRIPT } from './ia-demo.js';
@@ -18,7 +18,7 @@ export function iaSection() {
   const sync = () => { body.hidden = !open; head.setAttribute('aria-expanded', String(open)); card.classList.toggle('open', open); };
   head.addEventListener('click', () => { open = !open; sync(); });
 
-  const label = () => { const s = engineSettings(); return s.kind === 'server' ? `Moteur sur cet ordinateur${s.model ? ' · ' + s.model : ''}` : s.kind === 'webgpu' ? 'Moteur du navigateur' : 'Non configurée'; };
+  const label = () => { const s = engineSettings(); return s.kind === 'server' ? `Moteur sur cet ordinateur${s.model ? ' · ' + shortModel(s.model) : ''}` : s.kind === 'webgpu' ? 'Moteur du navigateur' : 'Non configurée'; };
   const refreshSub = () => { sub.textContent = label(); };
 
   // ----- 1. moteur sur cet ordinateur -----
@@ -36,7 +36,7 @@ export function iaSection() {
     flavor = r.flavor;
     probeMsg.style.color = 'var(--ok)';
     probeMsg.textContent = `Connecté (${r.flavor === 'ollama' ? 'Ollama' : 'serveur local'}, ${r.ms} ms) · ${r.models.length} modèle${r.models.length > 1 ? 's' : ''} installé${r.models.length > 1 ? 's' : ''}.`;
-    modelSel.replaceChildren(...r.models.map((m) => h('option', { value: m, text: m })));
+    modelSel.replaceChildren(...r.models.map((m) => h('option', { value: m, text: shortModel(m) })));
     const cur = engineSettings().model; if (cur && r.models.includes(cur)) modelSel.value = cur;
     modelSel.hidden = !r.models.length;
     if (!r.models.length) { probeMsg.style.color = 'var(--danger)'; probeMsg.textContent = 'Le moteur répond, mais aucun modèle n\'est installé (voir l\'aide ci-dessous).'; }

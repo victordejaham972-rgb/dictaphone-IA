@@ -330,3 +330,21 @@ html.kbd .update-banner { display: none; }
 .vocab-item { padding: 14px 0; border-bottom: 1px solid var(--line); }
 .vocab-item:last-child { border-bottom: 0; }
 .vocab-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
+
+/* ----- Compte rendu généré par l'IA : points signalés et passages justificatifs ----- */
+.rflags { margin-top: 8px; display: grid; gap: 6px; }
+.rflag { display: flex; gap: 8px; align-items: flex-start; font-size: 12.8px; line-height: 1.45; color: var(--marine); background: rgba(31, 73, 125, .07); border-radius: 10px; padding: 7px 10px; }
+.rflag svg { width: 16px; height: 16px; margin-top: 1px; flex: none; }
+.evid { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
+.evid summary { cursor: pointer; font: 600 13px var(--sans); color: var(--teal); padding: 6px 0; list-style: none; min-height: 32px; }
+.evid summary::-webkit-details-marker { display: none; }
+.evid summary::before { content: '▸ '; }
+.evid[open] summary::before { content: '▾ '; }
+.ev { padding: 8px 0; border-bottom: 1px solid var(--line); }
+.ev:last-child { border-bottom: 0; }
+.ev-t { font: 600 13.5px/1.4 var(--sans); color: var(--ink); }
+.ev blockquote { margin: 5px 0 0; padding: 4px 0 4px 10px; border-left: 3px solid var(--line-strong); font-size: 12.8px; line-height: 1.5; color: var(--muted); font-style: italic; }
+.help { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 10px; }
+.help summary { cursor: pointer; font: 600 14px var(--sans); color: var(--teal); min-height: 36px; padding: 6px 0; }
+.check .a-sub { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+.rsec-head .pill { margin-right: 6px; }
