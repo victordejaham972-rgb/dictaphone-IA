@@ -8,6 +8,7 @@ import * as Up from './update.js';
 import { shareOrDownload } from './exports.js';
 import { AI_STATUS_TEXT } from './ai.js';
 import { modelStatus, localAiSettings, setLocalAi } from './ia-local.js';
+import { vocabAccordion } from './vocab-ui.js';
 
 const fmtMo = (b) => (b / 1048576).toFixed(b > 1e9 ? 0 : 1) + ' Mo';
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
@@ -80,25 +81,18 @@ export async function settingsView({ query }) {
     document.body.append(inp); inp.click(); setTimeout(() => inp.remove(), 120000);
   }
 
-  // ---------- Vocabulaire ----------
-  function vocabBlock() {
-    const list = S.getVocab();
-    const box = h('div', {});
-    const save = () => S.setVocab(list.filter((v) => v.from.trim() || v.to.trim()));
-    function draw() {
-      box.textContent = '';
-      list.forEach((v, i) => {
-        const a = h('input', { class: 'field', value: v.from, placeholder: 'Erreur fréquente', autocapitalize: 'none', autocorrect: 'off', 'aria-label': 'Erreur fréquente' });
-        const b = h('input', { class: 'field', value: v.to, placeholder: 'Écriture correcte', autocapitalize: 'none', autocorrect: 'off', 'aria-label': 'Écriture correcte' });
-        a.addEventListener('input', () => { v.from = a.value; save(); }); b.addEventListener('input', () => { v.to = b.value; save(); });
-        box.append(h('div', { class: 'vocab-row' }, a, h('span', { text: '→' }), b, h('button', { class: 'iconbtn', 'aria-label': 'Supprimer', style: { color: 'var(--danger)', flex: 'none' }, onclick: () => { list.splice(i, 1); save(); draw(); } }, icon('trash'))));
-      });
-      box.append(h('button', { class: 'btn small', style: { marginTop: '12px' }, onclick: () => { list.push({ from: '', to: '' }); draw(); const f = box.querySelectorAll('.vocab-row input'); f[f.length - 2] && f[f.length - 2].focus(); } }, icon('plus'), h('span', { text: 'Ajouter une correction' })));
-    }
-    draw();
-    return h('div', { class: 'card' }, h('p', { class: 'hint', style: { marginTop: 0 }, text: 'Mots que la transcription Apple écrit souvent mal. Dans une transcription, « Corriger » puis « Appliquer mon vocabulaire » les remplace d\'un coup.' }), box);
+  // ---------- Apparence ----------
+  function themeBlock() {
+    const cur = (S.getSettings().theme) || 'light';
+    const opts = [['light', 'Clair'], ['auto', 'Automatique'], ['dark', 'Sombre']];
+    const seg = h('div', { class: 'seg' }, opts.map(([k, label]) => h('button', { class: cur === k ? 'on' : '', text: label, onclick: () => {
+      S.setSetting('theme', k); document.documentElement.setAttribute('data-theme', k);
+      const dark = k === 'dark' || (k === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
+      const m = document.querySelector('meta[name="theme-color"]'); if (m) m.setAttribute('content', dark ? '#071A33' : '#F6F0E7');
+      seg.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.textContent === label));
+    } })));
+    return h('div', { class: 'card' }, seg, h('p', { class: 'hint', text: 'Clair : ambiance coquille d\'œuf (par défaut). Automatique : suit le mode sombre de l\'appareil. Sombre : fond bleu nuit.' }));
   }
-
   // ---------- IA locale ----------
   // Rien n'est supposé : un modèle n'est proposé que s'il a réussi la sonde IA SUR CET APPAREIL (voir ia-local.js).
   function aiBlock() {
@@ -163,7 +157,8 @@ export async function settingsView({ query }) {
             h('button', { class: 'btn primary', onclick: backupFlow }, icon('share'), h('span', { text: 'Sauvegarder' })),
             h('button', { class: 'btn', onclick: restoreFlow }, icon('archive'), h('span', { text: 'Restaurer' }))))),
 
-      group('Vocabulaire de correction', vocabBlock()),
+      h('div', { class: 'settings-group' }, vocabAccordion()),
+      group('Apparence', themeBlock()),
 
       group('Intelligence artificielle', aiBlock()),
 
@@ -201,7 +196,7 @@ export async function settingsView({ query }) {
       group('À propos',
         h('div', { class: 'card' },
           h('div', { class: 'kv' }, h('span', { text: 'Version' }), h('span', { text: APP_VERSION })),
-          h('p', { class: 'hint', text: 'Dictaphone IA, développé pour Ade-ci Family Office. Polices Abhaya Libre et DM Sans (licence SIL OFL).' }))),
+          h('p', { class: 'hint', text: 'Dictaphone IA, développé pour Ade-ci Family Office. Polices Abhaya Libre (titres) et Open Sans (textes), licence SIL OFL.' }))),
       h('div', { style: { height: '12px' } }));
     drawStorage();
   };

@@ -152,18 +152,59 @@ export function getVocab() {
 }
 export function setVocab(list) { try { localStorage.setItem(VOCAB_KEY, JSON.stringify(list)); } catch {} }
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-// Remplace des mots entiers, sans tenir compte de la casse. Renvoie le texte corrigé et le nombre de remplacements.
-export function applyVocab(text, vocab) {
+const MAX_VOCAB = 2000;
+// Une correction est refusée si elle risque de toucher un montant, une date ou un nom : pas de chiffre dans l'erreur à corriger,
+// au moins 2 caractères, aucune différence autre que l'écriture, et pas de doublon.
+export function checkVocabEntry(from, to, list = []) {
+  const f = (from || '').trim(), t = (to || '').trim();
+  if (f.length < 2) return 'L\'erreur à corriger doit faire au moins 2 caractères.';
+  if (!t) return 'Indiquez l\'écriture correcte.';
+  if (f.length > 100 || t.length > 100) return 'Texte trop long (100 caractères au maximum).';
+  if (/\d/.test(f)) return 'Une correction ne peut pas contenir de chiffre : elle risquerait de modifier un montant ou une date.';
+  if (f === t) return 'L\'erreur et l\'écriture correcte sont identiques.';
+  if (list.length >= MAX_VOCAB) return 'Nombre maximal de corrections atteint.';
+  return '';
+}
+// Remplacement manuel de mots entiers (utilisé par « Corriger ») : la casse est ignorée sauf demande contraire.
+export function replaceWords(text, from, to, { cs = false } = {}) {
+  const f = (from || '').trim();
+  if (!f) return { text, count: 0 };
   let count = 0;
-  let out = text;
-  for (const { from, to } of vocab) {
-    if (!from || !from.trim()) continue;
-    const re = new RegExp('(^|[^\\p{L}\\p{N}])(' + esc(from.trim()).replace(/\s+/g, '\\s+') + ')(?![\\p{L}\\p{N}])', 'giu');
-    out = out.replace(re, (m, pre) => { count++; return pre + to; });
-  }
+  const re = new RegExp('(^|[^\\p{L}\\p{N}])(' + esc(f).replace(/\s+/g, '\\s+') + ')(?![\\p{L}\\p{N}])', cs ? 'gu' : 'giu');
+  const out = text.replace(re, (m, pre) => { count++; return pre + to; });
   return { text: out, count };
 }
-
+// Ajoute ou met à jour une correction du vocabulaire. Renvoie un message d'erreur, ou '' si c'est enregistré.
+export function addVocabEntry(from, to, cs = false) {
+  const list = getVocab();
+  const dup = list.find((v) => v.from.trim().toLowerCase() === (from || '').trim().toLowerCase());
+  const err = checkVocabEntry(from, to, list);
+  if (err) return err;
+  if (dup) { dup.to = to.trim(); if (cs) dup.cs = true; else delete dup.cs; }
+  else { const e = { from: from.trim(), to: to.trim() }; if (cs) e.cs = true; list.unshift(e); }
+  setVocab(list);
+  return '';
+}
+// Remplace des mots ENTIERS (jamais une partie de mot, jamais collés à un chiffre). Sécurités :
+// - une correction « casse exacte » (cs) ne s'applique que si la casse est identique ;
+// - sinon, un mot qui commence par une majuscule au milieu d'une phrase est considéré comme un nom propre et laissé tel quel.
+// Renvoie le texte corrigé, le nombre de remplacements et le nombre d'occurrences ignorées par prudence.
+export function applyVocab(text, vocab) {
+  let count = 0, skipped = 0;
+  let out = text;
+  const SENT = /(^|[.!?…:;\n"«(\u2014\u2013-])\s*$/;
+  for (const { from, to, cs } of vocab) {
+    if (!from || !from.trim() || !to || /\d/.test(from)) continue;
+    const re = new RegExp('(^|[^\\p{L}\\p{N}])(' + esc(from.trim()).replace(/\s+/g, '\\s+') + ')(?![\\p{L}\\p{N}])', cs ? 'gu' : 'giu');
+    const fromHasUpper = /\p{Lu}/u.test(from);
+    out = out.replace(re, (m, pre, word, offset, whole) => {
+      const start = offset + pre.length;
+      if (!cs && !fromHasUpper && /^\p{Lu}/u.test(word) && start > 0 && !SENT.test(whole.slice(Math.max(0, start - 3), start))) { skipped++; return m; }
+      count++; return pre + to;
+    });
+  }
+  return { text: out, count, skipped };
+}
 // ---------- Réglages simples ----------
 const SET_KEY = 'dia_settings';
 export function getSettings() { try { return JSON.parse(localStorage.getItem(SET_KEY)) || {}; } catch { return {}; } }

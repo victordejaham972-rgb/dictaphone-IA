@@ -403,19 +403,26 @@ export async function ficheView({ params, query }) {
     const fix = () => sheet({ title: 'Corriger la transcription', build(body, close) {
       const find = h('input', { class: 'field', placeholder: 'Mot ou expression erronée', autocapitalize: 'none', autocorrect: 'off' });
       const rep = h('input', { class: 'field', placeholder: 'Remplacer par', autocapitalize: 'none', autocorrect: 'off' });
+      const csChk = h('input', { type: 'checkbox' }), keepChk = h('input', { type: 'checkbox' });
+      const found = h('p', { class: 'hint', style: { margin: '8px 0 0' } });
+      const upFound = () => { const f = find.value.trim(); if (!f) { found.textContent = ''; return; } const n = S.replaceWords(ta.value, f, rep.value, { cs: csChk.checked }).count; found.textContent = n ? `${n} occurrence${n > 1 ? 's' : ''} trouvée${n > 1 ? 's' : ''} (mots entiers uniquement).` : 'Aucune occurrence trouvée.'; };
+      for (const x of [find, rep, csChk]) x.addEventListener('input', upFound);
       const doReplace = async () => {
-        const f = find.value; if (!f) return find.focus();
-        const parts = ta.value.split(f); const n = parts.length - 1;
-        if (!n) return toast('Aucune occurrence trouvée.');
-        close(); if (await applyChange(parts.join(rep.value), 'correction', `« ${f.slice(0, 30)} » → « ${rep.value.slice(0, 30)} »`)) toast(`${n} remplacement${n > 1 ? 's' : ''}`);
-      };
-      const vocab = S.getVocab();
+        const f = find.value.trim(); if (!f) return find.focus();
+        const r = S.replaceWords(ta.value, f, rep.value, { cs: csChk.checked });
+        if (!r.count) return toast('Aucune occurrence trouvée.');
+        let kept = '';
+        if (keepChk.checked) { const err = S.addVocabEntry(f, rep.value, csChk.checked); kept = err ? ' (non retenue : ' + err + ')' : ' · retenue dans le vocabulaire'; }
+        close(); if (await applyChange(r.text, 'correction', `« ${f.slice(0, 30)} » → « ${rep.value.slice(0, 30)} »`)) toast(`${r.count} remplacement${r.count > 1 ? 's' : ''}${kept}`, 4500);
+      };      const vocab = S.getVocab();
       const last = e.transcriptHistory[0];
       body.append(
-        h('label', { class: 'lbl', text: 'Rechercher' }), find, h('label', { class: 'lbl', text: 'Remplacer par' }), rep,
+        h('label', { class: 'lbl', text: 'Rechercher' }), find, h('label', { class: 'lbl', text: 'Remplacer par' }), rep, found,
+        h('label', { class: 'check' }, csChk, h('span', { text: 'Respecter les majuscules' })),
+        h('label', { class: 'check' }, keepChk, h('span', { text: 'Retenir cette correction dans mon vocabulaire' })),
         h('div', { class: 'sheet-actions' },
           h('button', { class: 'btn primary', text: 'Tout remplacer', onclick: doReplace }),
-          h('button', { class: 'btn', onclick: async () => { const r = S.applyVocab(ta.value, vocab); if (!r.count) return toast('Aucune correction à appliquer.'); close(); if (await applyChange(r.text, 'correction', 'vocabulaire')) toast(`${r.count} correction${r.count > 1 ? 's' : ''} du vocabulaire appliquée${r.count > 1 ? 's' : ''}`); } }, icon('sparkle'), h('span', { text: `Appliquer mon vocabulaire (${vocab.length})` })),
+          h('button', { class: 'btn', onclick: async () => { const r = S.applyVocab(ta.value, vocab); if (!r.count) return toast(r.skipped ? 'Aucune correction appliquée : ' + r.skipped + ' occurrence(s) ignorée(s) par prudence (noms propres possibles).' : 'Aucune correction à appliquer.', 5000); close(); if (await applyChange(r.text, 'correction', 'vocabulaire')) toast(`${r.count} correction${r.count > 1 ? 's' : ''} du vocabulaire appliquée${r.count > 1 ? 's' : ''}`); } }, icon('sparkle'), h('span', { text: `Appliquer mon vocabulaire (${vocab.length})` })),
           last && last.reason === 'correction' ? h('button', { class: 'btn', text: 'Annuler la dernière correction', onclick: async () => { close(); toast((await applyChange(last.text, 'rétablissement', 'avant correction')) ? 'Correction annulée' : 'Annulation impossible'); } }) : null,
           h('button', { class: 'btn', text: 'Fermer', onclick: close })));
     } });

@@ -87,7 +87,7 @@ export function sanitize(obj) {
     bookmarks: [], createdAt: num(s.createdAt, Date.now()), updatedAt: num(s.updatedAt, Date.now()),
     durationSec: num(s.durationSec), hadAudio: !!s.hadAudio, nChunks: 0, doneChunks: 0, hasOriginal: false,
   }));
-  const vocab = (Array.isArray(obj.vocab) ? obj.vocab : []).filter((v) => v && typeof v.from === 'string' && typeof v.to === 'string').slice(0, 500).map((v) => ({ from: v.from.slice(0, 100), to: v.to.slice(0, 100) }));
+  const vocab = (Array.isArray(obj.vocab) ? obj.vocab : []).filter((v) => v && typeof v.from === 'string' && typeof v.to === 'string').slice(0, 2000).map((v) => ({ from: v.from.slice(0, 100), to: v.to.slice(0, 100), ...(v.cs ? { cs: true } : {}) }));
   return { folders, templates, sessions, vocab };
 }
 
