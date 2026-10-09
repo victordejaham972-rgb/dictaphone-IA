@@ -161,7 +161,7 @@ export async function settingsView({ query }) {
           h('p', { class: 'hint', text: 'Vos données sont uniquement sur cet appareil. Sauvegardez-les régulièrement et rangez le fichier dans un emplacement sécurisé.' }),
           h('div', { class: 'btn-row', style: { marginTop: '10px' } },
             h('button', { class: 'btn primary', onclick: backupFlow }, icon('share'), h('span', { text: 'Sauvegarder' })),
-            h('button', { class: 'btn', onclick: restoreFlow }, icon('upload'), h('span', { text: 'Restaurer' }))))),
+            h('button', { class: 'btn', onclick: restoreFlow }, icon('archive'), h('span', { text: 'Restaurer' }))))),
 
       group('Vocabulaire de correction', vocabBlock()),
 

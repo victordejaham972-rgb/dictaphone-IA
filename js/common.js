@@ -12,23 +12,24 @@ export function topbar({ back, backLabel = 'Retour', right }) {
     h('div', { class: 'spacer' }), right || null);
 }
 
-export function statusChips(e) {
-  const chips = [];
-  if (hasTranscript(e)) chips.push(h('span', { class: 'chip', text: 'Transcription' }));
-  if (hasReport(e)) chips.push(h('span', { class: 'chip ok', text: 'Compte rendu' }));
-  else if (hasTranscript(e)) chips.push(h('span', { class: 'chip warn', text: 'À rédiger' }));
-  if (hasAudio(e)) chips.push(h('span', { class: 'chip', text: 'Audio' }));
-  return h('div', { class: 'chips' }, chips);
+// Statut d'un entretien : une seule pastille claire (+ « Audio » si un enregistrement existe)
+export function statusPills(e) {
+  const pills = [];
+  if (hasAudio(e)) pills.push(h('span', { class: 'pill quiet', text: 'Audio' }));
+  if (hasReport(e)) pills.push(h('span', { class: 'pill', text: 'Rédigé' }));
+  else if (hasTranscript(e)) pills.push(h('span', { class: 'pill todo' }, h('i', { class: 'dot' }), 'À rédiger'));
+  else pills.push(h('span', { class: 'pill quiet', text: 'Sans texte' }));
+  return h('span', { class: 'pills' }, pills);
 }
+export const statusChips = statusPills;
 
-export function entretienRow(e, { onMore, showCat = true } = {}) {
-  const meta = [fmtDate(e.date), showCat ? catShort(e.category) : null].filter(Boolean).join(' · ');
-  return h('div', { class: 'row', role: 'link', tabindex: '0', onclick: () => go('#/entretien/' + e.id), onkeydown: (ev) => { if (ev.key === 'Enter') go('#/entretien/' + e.id); } },
+export function entretienRow(e, { onMore, showCat = true, selected = false } = {}) {
+  const meta = [new Date(e.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }), showCat ? catShort(e.category) : null].filter(Boolean).join(' · ');
+  return h('div', { class: 'row' + (selected ? ' on' : ''), role: 'link', tabindex: '0', onclick: () => go('#/entretien/' + e.id), onkeydown: (ev) => { if (ev.key === 'Enter') go('#/entretien/' + e.id); } },
     h('div', { class: 'tile' }, e.category ? catIcon(e.category) : icon('doc')),
-    h('div', { class: 'grow' }, h('div', { class: 't', text: e.title }), h('div', { class: 'm', text: meta }), statusChips(e)),
-    onMore ? h('button', { class: 'more', 'aria-label': 'Actions', onclick: (ev) => { ev.stopPropagation(); onMore(e); } }, icon('more')) : h('span', { class: 'chev' }, icon('chevron')));
+    h('div', { class: 'grow' }, h('div', { class: 't', text: e.title }), h('div', { class: 'm' }, h('span', { text: meta }), statusPills(e))),
+    onMore ? h('button', { class: 'more', 'aria-label': 'Actions', onclick: (ev) => { ev.stopPropagation(); onMore(e); } }, icon('more')) : null);
 }
-
 // Sélecteur de dossier. Retourne { category, folderId } (folderId null = racine de la catégorie) ou null si annulé.
 export function pickFolder({ categories = CATEGORIES.map((c) => c.id), folders, excludeIds = new Set(), current = null, title = 'Choisir un dossier' }) {
   return new Promise((resolve) => {

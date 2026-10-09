@@ -1,13 +1,13 @@
 // Service worker : installation de l'application et ouverture rapide. Il ne met en cache QUE les fichiers de l'application
 // (jamais les données de l'utilisateur, qui restent dans IndexedDB). Les modèles d'IA du laboratoire sont gérés par leurs bibliothèques.
-const V = 'dictaphone-v9-0.4.3';
+const V = 'dictaphone-v10-0.5.0';
 const SHELL = [
   './', 'index.html', 'app.css', 'manifest.webmanifest',
   'js/main.js', 'js/ui.js', 'js/store.js', 'js/defaults.js', 'js/common.js', 'js/exports.js', 'js/pdf.js', 'js/backup.js', 'js/ai.js', 'js/version.js', 'js/import.js', 'js/pdfread.js', 'js/update.js', 'js/ttf.js', 'fonts/pdf/AbhayaLibre-Regular.ttf', 'fonts/pdf/OpenSans-Light.ttf', 'fonts/pdf/OpenSans-Regular.ttf', 'vendor/pdfjs/pdf.min.mjs', 'vendor/pdfjs/pdf.worker.min.mjs',
   'js/views-home.js', 'js/views-library.js', 'js/views-entretien.js', 'js/views-templates.js', 'js/views-settings.js',
   'db.js', 'audio.js',
-  'fonts/abhaya-libre-latin-500-normal.woff2', 'fonts/abhaya-libre-latin-600-normal.woff2', 'fonts/abhaya-libre-latin-700-normal.woff2', 'fonts/dm-sans-latin-wght-normal.woff2',
-  'img/emblem-tile.png', 'icon-32.png', 'icon-180.png', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png',
+  'fonts/abhaya-libre-latin-400-normal.woff2', 'fonts/abhaya-libre-latin-600-normal.woff2', 'fonts/open-sans-latin-wght-normal.woff2',
+  'img/emblem-tile.png', 'img/emblem-ivory.png', 'icon-32.png', 'icon-180.png', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png',
   // IA locale (page de rédaction, moteur hébergé, sonde)
   'ia.html', 'ia-worker.js', 'ia-sonde.html', 'ia-sonde.js', // le moteur vendor/web-llm.js (6 Mo) est mis en cache à la première utilisation de l'IA, pas à l'installation
   'js/ia-core.js', 'js/ia-verify.js', 'js/ia-score.js', 'js/ia-models.js', 'js/ia-local.js', 'js/ia-page.js',

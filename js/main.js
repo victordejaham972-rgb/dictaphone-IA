@@ -1,8 +1,9 @@
 // Point d'entrée : navigation entre les écrans, barre du bas, initialisation.
 import { h, icon, toast } from './ui.js';
 import * as S from './store.js';
-import { homeView } from './views-home.js';
-import { libraryView } from './views-library.js';
+import { homeView, backupAgo } from './views-home.js';
+import { libraryView, lastQuery } from './views-library.js';
+import { lastBackupAt } from './backup.js';
 import { newView, ficheView } from './views-entretien.js';
 import { templatesView, templateEditView } from './views-templates.js';
 import { settingsView } from './views-settings.js';
@@ -28,9 +29,16 @@ const tabEls = {};
 for (const [id, href, ic, label] of TABS) {
   const plus = id === 'new';
   const a = h('a', { class: 'tab' + (plus ? ' tab-plus' : ''), href, 'aria-label': label },
-    plus ? h('span', { class: 'bubble' }, icon(ic)) : icon(ic), h('span', { text: plus ? 'Nouveau' : label }));
+    plus ? h('span', { class: 'bubble' }, icon(ic)) : icon(ic), plus ? [h('span', { class: 'l-m', text: 'Nouveau' }), h('span', { class: 'l-d', text: 'Nouvel entretien' })] : h('span', { text: label }));
   tabEls[id] = a; tabbar.append(a);
 }
+// Ordinateur : la barre du bas devient un menu à gauche, avec la marque et le rappel de sauvegarde
+const tabWrap = tabbar.parentElement;
+tabWrap.prepend(h('div', { class: 'side-brand' }, h('img', { src: 'img/emblem-tile.png', alt: '', width: 44, height: 44 }), h('div', {}, h('div', { class: 'name', text: 'Dictaphone IA' }), h('div', { class: 'sub', text: 'Ade-ci Family Office' }))));
+const sideFoot = h('div', { class: 'side-foot' });
+tabWrap.append(sideFoot);
+const refreshFoot = () => { const last = lastBackupAt(); sideFoot.replaceChildren(icon('shield'), h('br'), last ? 'Dernière sauvegarde' : 'Aucune sauvegarde', last ? h('b', { text: backupAgo(last) }) : h('b', { text: 'à faire dans Réglages' })); };
+refreshFoot();
 // Clavier ouvert : sur iPhone, une barre fixée en bas de l'écran « flotte » au milieu de l'écran quand le clavier s'affiche.
 // Tant qu'un champ de saisie est actif, la barre du bas est donc masquée ; elle revient dès que le clavier se ferme.
 {
@@ -59,6 +67,8 @@ function errorView(err) {
     h('div', { class: 'btn-row' }, h('button', { class: 'btn primary', text: 'Recharger', onclick: () => location.reload() }), h('a', { class: 'btn', href: '#/', text: 'Accueil' })))) };
 }
 
+// Ordinateur large : la liste des entretiens reste affichée à gauche de la fiche (trois colonnes avec le menu)
+const DESK = window.matchMedia('(min-width: 1000px)');
 async function render() {
   const my = ++seq;
   if (current && current.dispose) { try { await current.dispose(); } catch {} }
@@ -66,21 +76,30 @@ async function render() {
   const raw = location.hash.replace(/^#/, '');
   const [path, qs = ''] = raw.split('?');
   const query = Object.fromEntries(new URLSearchParams(qs));
-  let out, tab = 'home';
+  const prevList = app.querySelector('.pane-list'), listScroll = prevList ? prevList.scrollTop : 0;
+  let out, listOut = null, tab = 'home';
   try {
     const route = routes.find(([re]) => re.test(path));
     if (!route) { location.replace('#/'); return; }
     tab = route[2];
     const params = path.match(route[0]).slice(1);
-    out = await route[1]({ params, query });
-  } catch (err) { out = errorView(err); }
+    const isFiche = route[1] === ficheView, isLib = route[1] === libraryView;
+    if (DESK.matches && (isFiche || isLib)) {
+      if (isFiche) { listOut = await libraryView({ query: lastQuery || { mode: 'liste' }, selectedId: params[0], remember: false }); out = await ficheView({ params, query }); }
+      else { listOut = await libraryView({ params, query, selectedId: null }); out = { el: h('div', { class: 'pane-empty' }, h('div', {}, h('img', { src: 'img/emblem-ivory.png', alt: '', style: { filter: 'invert(.25) sepia(1) hue-rotate(150deg)' } }), h('h2', { text: 'Sélectionnez un entretien' }), h('p', { text: 'Ouvrez une fiche dans la liste, ou créez un nouvel entretien.' }))) }; }
+    } else out = await route[1]({ params, query });
+  } catch (err) { out = errorView(err); listOut = null; }
   if (my !== seq) return;
-  app.replaceChildren(out.el);
+  if (listOut) {
+    app.replaceChildren(h('div', { class: 'split' }, h('aside', { class: 'pane-list' }, listOut.el), h('section', { class: 'pane-main' }, out.el)));
+    const pl = app.querySelector('.pane-list'); if (pl) pl.scrollTop = listScroll;
+  } else app.replaceChildren(out.el);
   current = out;
   setActive(tab);
+  refreshFoot();
   window.scrollTo(0, 0);
 }
-window.addEventListener('hashchange', render);
+DESK.addEventListener('change', () => render());window.addEventListener('hashchange', render);
 window.addEventListener('unhandledrejection', (e) => { console.error('Erreur :', e.reason && e.reason.message); toast('Une erreur est survenue.'); });
 
 (async function start() {

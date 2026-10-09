@@ -48,6 +48,9 @@ const ICONS = {
   archive: 'M4 5h16v4H4zM6 9v10h12V9M10 13h4',
   sparkle: 'M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z',
   flask: 'M9 3h6M10 3v6l-5 9a2 2 0 002 3h10a2 2 0 002-3l-5-9V3',
+  clock: 'M12 3a9 9 0 100 18 9 9 0 000-18zM12 7v5l3 2',
+  mail: 'M3 6h18v12H3zM3 7l9 7 9-7',
+  txt: 'M7 3h7l5 5v12a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1zM14 3v5h5M9 12h6M9 15h6M9 18h4',
 };
 export function icon(name, cls) {
   const s = document.createElementNS(NS, 'svg');
@@ -122,16 +125,19 @@ export function promptDialog({ title, label, value = '', placeholder = '', confi
   });
 }
 
-export function actionSheet({ title, actions }) {
+export function actionSheet({ title, lead, actions, cancelLabel = 'Annuler' }) {
   sheet({ title, build(body, close) {
+    if (lead) body.append(h('p', { class: 'sheet-lead', text: lead }));
     body.append(h('div', { class: 'actions-list' }, actions.map((a) => h('button', {
       class: 'action' + (a.danger ? ' danger' : ''),
-      onclick: () => { close(); setTimeout(() => a.run && a.run(), 120); },
-    }, a.icon ? icon(a.icon) : null, h('span', {}, a.label, a.sub ? h('small', { class: 'a-sub', text: a.sub }) : null)))),
-    h('button', { class: 'btn', text: 'Fermer', onclick: close }));
+      // now : l'action démarre aussitôt (nécessaire pour le presse-papiers et le choix de fichier, qui exigent un toucher immédiat)
+      onclick: () => { close(); if (a.now) { if (a.run) a.run(); } else setTimeout(() => a.run && a.run(), 120); },
+    }, a.icon ? h('span', { class: 'a-ico' }, icon(a.icon)) : null,
+    h('span', { class: 'a-txt' }, a.label, a.sub ? h('small', { class: 'a-sub', text: a.sub }) : null),
+    a.more ? icon('chevron', 'chev') : null))),
+    h('button', { class: 'btn', text: cancelLabel, onclick: close }));
   } });
 }
-
 export function autosize(ta) {
   const fit = () => { ta.style.height = 'auto'; ta.style.height = Math.max(ta.scrollHeight + 2, 96) + 'px'; };
   ta.addEventListener('input', fit);

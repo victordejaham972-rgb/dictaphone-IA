@@ -14,7 +14,11 @@ function sorter(kind) {
   return (a, b) => b.date - a.date;
 }
 
-export async function libraryView({ query }) {
+// Dernière vue de la bibliothèque (sur ordinateur, la liste reste affichée à côté de la fiche ouverte)
+export let lastQuery = null;
+
+export async function libraryView({ query, selectedId = null, remember = true }) {
+  if (remember) lastQuery = { ...query };
   let [entretiens, folders] = await Promise.all([S.listEntretiens(), S.listFolders()]);
   const cat = query.cat || '';              // '' = toutes, 'none' = non classés, sinon id de catégorie
   const folderId = query.f || null;
@@ -71,68 +75,80 @@ export async function libraryView({ query }) {
 
   // ----- rendu -----
   const listBox = h('div', {});
+  const head = (label, action) => h('div', { class: 'sec-head' }, h('h2', { text: label }), action || null);
   function renderList() {
     listBox.textContent = '';
     const q = norm(state.q.trim());
     const sort = sorter(state.sort);
     const inCat = (e) => !cat || (cat === 'none' ? !e.category : e.category === cat);
-    const flat = (items) => h('div', { class: 'list' }, items.sort(sort).map((e) => entretienRow(e, { onMore: entretienMenu, showCat: !cat })));
+    const flat = (items) => h('div', { class: 'list' }, items.sort(sort).map((e) => entretienRow(e, { onMore: entretienMenu, showCat: !cat, selected: e.id === selectedId })));
+    const catRow = (c, n, nf) => h('a', { class: 'row', href: '#/bibliotheque?cat=' + c.id },
+      h('div', { class: 'tile' }, catIcon(c.id)),
+      h('div', { class: 'grow' }, h('div', { class: 't', text: c.label }), h('div', { class: 'm', text: `${n} entretien${n > 1 ? 's' : ''} · ${nf} dossier${nf > 1 ? 's' : ''}` })),
+      icon('chevron', 'chev'));
 
     if (q) {
       const hits = entretiens.filter(inCat).filter((e) => norm(e.title + ' ' + (e.who || '') + ' ' + (e.subject || '') + ' ' + S.transcriptOf(e) + ' ' + S.reportOf(e).map((r) => r.title + ' ' + r.content).join(' ')).includes(q));
-      listBox.append(h('p', { class: 'hint', text: hits.length + ' résultat' + (hits.length > 1 ? 's' : '') }), hits.length ? flat(hits) : empty('Aucun résultat', 'Essayez un autre mot.'));
+      listBox.append(h('p', { class: 'hint', style: { marginTop: '18px' }, text: hits.length + ' résultat' + (hits.length > 1 ? 's' : '') }), hits.length ? flat(hits) : empty('Aucun résultat', 'Essayez un autre mot.'));
       return;
     }
     if (filter || state.mode === 'liste') {
       let items = entretiens.filter(inCat);
       if (filter === 'transcriptions') items = items.filter(S.hasTranscript);
       if (filter === 'rapports') items = items.filter(S.hasReport);
-      listBox.append(items.length ? flat(items) : empty('Rien à afficher', 'Aucun entretien ne correspond à ce filtre.'));
+      if (filter === 'arediger') items = items.filter((e) => S.hasTranscript(e) && !S.hasReport(e));
+      listBox.append(head('Entretiens'), items.length ? flat(items) : empty('Rien à afficher', 'Aucun entretien ne correspond à ce filtre.'));
       return;
     }
     if (cat === 'none') {
       const items = entretiens.filter((e) => !e.category);
-      listBox.append(h('p', { class: 'hint', text: 'Enregistrements des versions d\'essai : déplacez-les dans une catégorie et un dossier.' }), items.length ? flat(items) : empty('Aucun élément non classé'));
+      listBox.append(h('p', { class: 'hint', style: { marginTop: '18px' }, text: 'Enregistrements des versions d\'essai : déplacez-les dans une catégorie et un dossier.' }), items.length ? flat(items) : empty('Aucun élément non classé'));
       return;
     }
-    if (!cat) { // toutes les catégories : vue d'ensemble
-      for (const c of CATEGORIES) {
-        const n = entretiens.filter((e) => e.category === c.id).length, nf = folders.filter((f) => f.category === c.id).length;
-        listBox.append(h('a', { class: 'cat-card', href: '#/bibliotheque?cat=' + c.id },
-          h('div', { class: 'tile' }, catIcon(c.id)),
-          h('div', {}, h('h3', { text: c.label }), h('p', { text: `${n} entretien${n > 1 ? 's' : ''} · ${nf} dossier${nf > 1 ? 's' : ''}` })),
-          h('span', { class: 'chev' }, icon('chevron'))));
-      }
-      const nn = entretiens.filter((e) => !e.category).length;
-      if (nn) listBox.append(h('a', { class: 'cat-card', href: '#/bibliotheque?cat=none' }, h('div', { class: 'tile' }, icon('archive')), h('div', {}, h('h3', { text: 'Non classés' }), h('p', { text: nn + ' élément(s)' })), h('span', { class: 'chev' }, icon('chevron'))));
+    if (!cat) { // toutes les catégories : dossiers (de toutes les catégories) puis tous les entretiens
+      const roots = folders.filter((f) => !f.parentId).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+      listBox.append(head('Dossiers', h('button', { text: '＋ Nouveau', onclick: newFolder })));
+      if (roots.length) {
+        listBox.append(h('div', { class: 'folders' }, roots.map((f) => {
+          const ne = entretiens.filter((e) => e.folderId === f.id).length, nf = folders.filter((x) => x.parentId === f.id).length;
+          const go1 = () => nav({ cat: f.category, f: f.id });
+          return h('div', { class: 'folder', role: 'link', tabindex: '0', onclick: go1, onkeydown: (ev) => { if (ev.key === 'Enter') go1(); } },
+            h('div', { class: 'tile' }, icon('folder')),
+            h('div', {}, h('b', { text: f.name }), h('small', { text: `${ne} fiche${ne > 1 ? 's' : ''}${nf ? ' · ' + nf + ' sous-dossier' + (nf > 1 ? 's' : '') : ''}` })),
+            h('button', { class: 'more', 'aria-label': 'Actions du dossier', onclick: (ev) => { ev.stopPropagation(); folderMenu(f); } }, icon('more')));
+        })));
+      } else listBox.append(h('p', { class: 'hint', text: 'Aucun dossier pour le moment. Les catégories se choisissent avec les filtres ci-dessus.' }));
+      listBox.append(head('Entretiens', h('button', { text: '＋ Nouveau', onclick: () => go('#/nouveau') })));
+      listBox.append(entretiens.length ? flat(entretiens.slice()) : empty('Aucun entretien', 'Créez votre premier entretien.'));
       return;
-    }
-    // une catégorie : dossier courant
+    }    // une catégorie : dossier courant
     const subs = folders.filter((f) => f.category === cat && f.parentId === (folder ? folder.id : null)).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
     const items = entretiens.filter((e) => e.category === cat && e.folderId === (folder ? folder.id : null));
+    listBox.append(head('Dossiers', h('button', { text: '＋ Nouveau', onclick: newFolder })));
     if (subs.length) {
-      listBox.append(h('div', { class: 'list', style: { marginBottom: '14px' } }, subs.map((f) => {
+      listBox.append(h('div', { class: 'folders' }, subs.map((f) => {
         const ne = entretiens.filter((e) => e.folderId === f.id).length, nf = folders.filter((x) => x.parentId === f.id).length;
-        return h('div', { class: 'row', role: 'link', tabindex: '0', onclick: () => nav({ f: f.id }), onkeydown: (ev) => { if (ev.key === 'Enter') nav({ f: f.id }); } },
+        return h('div', { class: 'folder', role: 'link', tabindex: '0', onclick: () => nav({ f: f.id }), onkeydown: (ev) => { if (ev.key === 'Enter') nav({ f: f.id }); } },
           h('div', { class: 'tile' }, icon('folder')),
-          h('div', { class: 'grow' }, h('div', { class: 't', text: f.name }), h('div', { class: 'm', text: `${ne} entretien${ne > 1 ? 's' : ''}${nf ? ' · ' + nf + ' sous-dossier' + (nf > 1 ? 's' : '') : ''}` })),
+          h('div', {}, h('b', { text: f.name }), h('small', { text: `${ne} fiche${ne > 1 ? 's' : ''}${nf ? ' · ' + nf + ' sous-dossier' + (nf > 1 ? 's' : '') : ''}` })),
           h('button', { class: 'more', 'aria-label': 'Actions du dossier', onclick: (ev) => { ev.stopPropagation(); folderMenu(f); } }, icon('more')));
       })));
-    }
+    } else listBox.append(h('p', { class: 'hint', text: folder ? 'Aucun sous-dossier.' : 'Aucun dossier pour le moment.' }));
+    listBox.append(head('Entretiens', h('button', { text: '＋ Nouveau', onclick: () => go('#/nouveau?cat=' + cat + (folder ? '&f=' + folder.id : '')) })));
     if (items.length) listBox.append(flat(items));
-    if (!subs.length && !items.length) listBox.append(empty(folder ? 'Dossier vide' : 'Aucun entretien ici', 'Créez un dossier ou un nouvel entretien.'));
+    else listBox.append(empty(folder ? 'Dossier vide' : 'Aucun entretien ici', 'Créez un entretien ou déplacez-en un dans ce dossier.'));
   }
 
   // ----- structure de la page -----
-  const search = h('input', { class: 'field', type: 'search', placeholder: 'Rechercher un entretien…', value: state.q, 'aria-label': 'Rechercher', autocomplete: 'off', enterkeyhint: 'search' });
+  const search = h('input', { class: 'field', type: 'search', placeholder: 'Rechercher un client, un sujet…', value: state.q, 'aria-label': 'Rechercher', autocomplete: 'off', enterkeyhint: 'search' });
   search.addEventListener('input', () => { state.q = search.value; renderList(); });
-  const catSeg = h('div', { class: 'seg', role: 'tablist' },
+  const catChips = h('div', { class: 'fchips', role: 'tablist' },
     [{ id: '', short: 'Tous' }, ...CATEGORIES].map((c) => h('button', { class: cat === c.id ? 'on' : '', role: 'tab', text: c.short, onclick: () => nav({ cat: c.id, f: '', filter: '' }) })));
-  const sortSel = h('select', { class: 'field', 'aria-label': 'Trier', style: { minHeight: '42px', padding: '8px 36px 8px 12px', fontSize: '14.5px' } },
+  const sortSel = h('select', { class: 'sortsel', 'aria-label': 'Trier' },
     h('option', { value: 'recent', text: 'Plus récents' }), h('option', { value: 'ancien', text: 'Plus anciens' }), h('option', { value: 'nom', text: 'Nom (A–Z)' }));
   sortSel.value = state.sort;
   sortSel.addEventListener('change', () => { state.sort = sortSel.value; renderList(); });
-  const modeSeg = h('div', { class: 'seg', style: { flex: 1 } },
+  const modeSeg = h('div', { class: 'seg' },
     h('button', { class: state.mode === 'dossiers' && !filter ? 'on' : '', text: 'Dossiers', onclick: () => { state.mode = 'dossiers'; nav({ mode: 'dossiers', filter: '' }); } }),
     h('button', { class: state.mode === 'liste' || filter ? 'on' : '', text: 'Liste', onclick: () => { state.mode = 'liste'; nav({ mode: 'liste' }); } }));
 
@@ -142,16 +158,12 @@ export async function libraryView({ query }) {
     path.map((f, i) => [h('span', { text: '›' }), i === path.length - 1 ? h('b', { style: { color: 'var(--ink)' }, text: f.name }) : h('button', { text: f.name, onclick: () => nav({ f: f.id }) })])) : null;
 
   const el = h('div', { class: 'view' },
-    h('div', { class: 'eyebrow', text: filter === 'transcriptions' ? 'Transcriptions' : filter === 'rapports' ? 'Comptes rendus' : 'Bibliothèque' }),
+    h('div', { class: 'eyebrow', text: filter === 'transcriptions' ? 'Transcriptions' : filter === 'rapports' ? 'Comptes rendus' : filter === 'arediger' ? 'À rédiger' : 'Bibliothèque' }),
     h('h1', { class: 'page-title', text: cat && cat !== 'none' ? catLabel(cat) : cat === 'none' ? 'Non classés' : 'Vos entretiens' }),
-    h('div', { class: 'rule' }),
     h('div', { class: 'searchbox' }, icon('search'), search),
-    catSeg,
-    h('div', { class: 'toolrow' }, modeSeg, h('div', { style: { flex: '0 0 150px' } }, sortSel)),
+    catChips,
+    h('div', { class: 'tools' }, modeSeg, sortSel),
     crumbs,
-    h('div', { class: 'toolrow' },
-      state.mode === 'dossiers' && !filter && cat !== 'none' ? h('button', { class: 'btn small', style: { width: '100%' }, onclick: newFolder }, icon('folder-plus'), h('span', { text: 'Nouveau dossier' })) : null,
-      h('button', { class: 'btn small primary', style: { width: '100%' }, onclick: () => go('#/nouveau' + (cat && cat !== 'none' ? '?cat=' + cat + (folder ? '&f=' + folder.id : '') : '')) }, icon('plus'), h('span', { text: 'Nouvel entretien' }))),
     listBox);
   renderList();
   return { el };

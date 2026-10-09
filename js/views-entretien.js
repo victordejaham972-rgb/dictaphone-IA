@@ -14,6 +14,14 @@ const toLocalInput = (ms) => { const d = new Date(ms); return `${d.getFullYear()
 const fromLocalInput = (v) => { const t = new Date(v).getTime(); return Number.isFinite(t) ? t : Date.now(); };
 const fmtDur = (s) => { s = Math.max(0, Math.floor(s)); const hh = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60; return (hh ? hh + ':' + pad(m) : m) + ':' + pad(x); };
 
+// Un seul point d'entrée pour ajouter du texte : coller ou importer un fichier PDF / TXT (l'aperçu et le choix Ajouter / Remplacer / Annuler restent obligatoires)
+function addTextMenu(onPaste, onImport) {
+  actionSheet({ title: 'Ajouter du texte', lead: 'Depuis le Dictaphone d’Apple ou un document existant.', actions: [
+    { label: 'Coller le texte copié', sub: 'Depuis le presse-papiers (Dictaphone)', icon: 'clipboard', more: true, now: true, run: onPaste },
+    { label: 'Importer un fichier', sub: 'PDF ou TXT, avec aperçu avant ajout', icon: 'upload', more: true, now: true, run: onImport },
+  ] });
+}
+
 // =====================================================================
 // NOUVEL ENTRETIEN
 // =====================================================================
@@ -154,9 +162,8 @@ export async function newView({ query }) {
     h('label', { class: 'lbl', text: 'Dossier' }), folderBtn,
     h('label', { class: 'lbl', text: 'Trame du compte rendu' }), tplSel,
     h('div', { class: 'sec-head' }, h('h2', { text: 'Transcription' })),
-    h('p', { class: 'hint', style: { marginTop: '-4px' }, text: 'Copiez la transcription depuis le Dictaphone d\'Apple, puis collez-la ici, ou importez un fichier texte ou PDF.' }),
-    h('button', { class: 'btn primary bigpaste', onclick: paste }, icon('clipboard'), h('span', { text: 'Coller une transcription' })),
-    h('button', { class: 'btn', style: { marginTop: '10px' }, onclick: importFile }, icon('upload'), h('span', { text: 'Importer un fichier (.txt ou PDF)' })),
+    h('p', { class: 'hint', style: { marginTop: '-4px' }, text: 'Copiez la transcription depuis le Dictaphone d\'Apple, puis ajoutez-la ici : collage, ou fichier PDF ou TXT.' }),
+    h('button', { class: 'btn primary bigpaste', onclick: () => addTextMenu(paste, importFile) }, icon('plus'), h('span', { text: 'Ajouter du texte' })),
     undoBtn,
     h('div', { style: { height: '12px' } }), ta, stats,
     h('div', { class: 'stickybar' }, h('button', { class: 'btn primary', onclick: create }, icon('check'), h('span', { text: 'Créer l\'entretien' }))));
@@ -188,7 +195,19 @@ export async function ficheView({ params, query }) {
   titleInp.addEventListener('input', () => { e.title = titleInp.value.replace(/\n/g, ' ') || 'Sans titre'; e.titleAuto = false; fitTitle(); edit(); });
   titleInp.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); titleInp.blur(); } });
   requestAnimationFrame(fitTitle);
-  const meta = h('div', { class: 'hint', style: { marginTop: 0 }, text: metaLine(e, folders) });
+  // Pastilles d'information sous le titre : nom, sujet, dossier (ou catégorie et date pour les anciennes fiches)
+  const meta = h('div', { class: 'tags' });
+  const tag = (ico, text) => h('span', { class: 'tag' }, ico || null, h('span', { text }));
+  function renderMeta() {
+    const tags = [];
+    if (e.who) tags.push(tag(icon('user'), e.who));
+    if (e.subject) tags.push(tag(null, e.subject));
+    const folder = e.folderId ? S.folderPath(e.folderId, folders).slice(-1)[0] : null;
+    if (folder) tags.push(tag(icon('folder'), folder.name));
+    if (!e.who && !e.subject) { tags.push(tag(e.category ? catIcon(e.category) : null, e.category ? catLabel(e.category) : 'Non classé')); tags.push(tag(null, fmtDate(e.date))); }
+    meta.replaceChildren(...tags);
+  }
+  renderMeta();
 
   // ----- exports -----
   // Les PDF sont créés par l'application dès l'ouverture du menu : Safari n'accepte la feuille de partage que très peu de temps après un toucher.
@@ -209,28 +228,26 @@ export async function ficheView({ params, query }) {
       else if (res === 'refuse') readySheet(file);
     } catch (err) { toast('PDF impossible : ' + err.message, 5000); }
   }
-  function exportMenu() {
+  // Menu unique « Partager » : PDF (créés sur l'appareil), mail, copie et fichier texte
+  function shareMenu() {
     const hasT = S.hasTranscript(e), hasR = S.hasReport(e);
-    if (!hasT && !hasR) return toast('Rien à exporter pour le moment.');
+    if (!hasT && !hasR) return toast('Rien à partager pour le moment : ajoutez d\'abord du texte.', 4200);
     const pT = hasT ? preparePdf('transcript') : null, pR = hasR ? preparePdf('report') : null;
-    actionSheet({ title: 'Exporter', actions: [
+    const textOf = (k) => (k === 'transcript' ? S.transcriptOf(e) : reportText(e, folders, tplName()));
+    // si la fiche a une transcription ET un compte rendu, on demande lequel
+    const which = (title, fn) => {
+      if (hasT && hasR) actionSheet({ title, actions: [{ label: 'La transcription', icon: 'doc', run: () => fn('transcript') }, { label: 'Le compte rendu', icon: 'doc', run: () => fn('report') }] });
+      else fn(hasT ? 'transcript' : 'report');
+    };
+    actionSheet({ title: 'Partager', lead: 'Les PDF sont créés sur l\'appareil, rien n\'est envoyé automatiquement.', actions: [
       { label: 'Transcription en PDF', icon: 'doc', sub: hasT ? 'Tout le texte transcrit' : 'Aucune transcription pour le moment', run: () => (pT ? sharePdf(pT) : toast('Aucune transcription à exporter.')) },
       { label: 'Compte rendu en PDF', icon: 'doc', sub: hasR ? 'Le compte rendu structuré' : 'À rédiger d\'abord', run: () => (pR ? sharePdf(pR) : toast('Rédigez d\'abord le compte rendu.')) },
-      { label: 'Envoyer par mail', icon: 'share', sub: 'Transcription ou compte rendu', run: mailChoice },
-      { label: 'Autres formats…', icon: 'copy', sub: 'Copier le texte, fichier .txt, imprimer', run: otherFormats },
-    ] });
-  }
-  function otherFormats() {
-    const rText = () => reportText(e, folders, tplName()), tText = () => transcriptText(e, folders);
-    actionSheet({ title: 'Autres formats', actions: [
-      S.hasTranscript(e) ? { label: 'Copier la transcription', icon: 'copy', run: async () => toast((await copyText(S.transcriptOf(e))) ? 'Transcription copiée' : 'Copie impossible') } : null,
-      S.hasTranscript(e) ? { label: 'Transcription en fichier texte (.txt)', icon: 'doc', run: () => { downloadText(safeName(e.title) + '-transcription.txt', tText()); toast('Fichier créé'); } } : null,
-      S.hasReport(e) ? { label: 'Copier le compte rendu', icon: 'copy', run: async () => toast((await copyText(rText())) ? 'Compte rendu copié' : 'Copie impossible') } : null,
-      S.hasReport(e) ? { label: 'Compte rendu en fichier texte (.txt)', icon: 'doc', run: () => { downloadText(safeName(e.title) + '-compte-rendu.txt', rText()); toast('Fichier créé'); } } : null,
-      S.hasReport(e) ? { label: 'Imprimer le compte rendu…', icon: 'doc', run: () => printReport(e, folders, tplName()) } : null,
+      { label: 'Envoyer par mail', icon: 'mail', sub: 'Transcription ou compte rendu', more: true, run: mailChoice },
+      { label: 'Copier le texte', icon: 'copy', run: () => which('Copier quel texte ?', async (k) => toast((await copyText(textOf(k))) ? 'Texte copié' : 'Copie impossible')) },
+      { label: 'Fichier texte (.txt)', icon: 'txt', run: () => which('Quel fichier texte ?', (k) => { downloadText(safeName(e.title) + (k === 'transcript' ? '-transcription.txt' : '-compte-rendu.txt'), k === 'transcript' ? transcriptText(e, folders) : textOf(k)); toast('Fichier créé'); }) },
+      hasR ? { label: 'Imprimer le compte rendu…', icon: 'doc', run: () => printReport(e, folders, tplName()) } : null,
     ].filter(Boolean) });
-  }
-  // Envoi par mail : la messagerie de l'appareil s'ouvre, l'utilisateur relit puis envoie lui-même.
+  }  // Envoi par mail : la messagerie de l'appareil s'ouvre, l'utilisateur relit puis envoie lui-même.
   function mailChoice() {
     const hasT = S.hasTranscript(e), hasR = S.hasReport(e);
     if (!hasT && !hasR) return toast('Rien à envoyer pour le moment.');
@@ -280,13 +297,7 @@ export async function ficheView({ params, query }) {
       check();
     } });
   }
-  function menu() {
-    actionSheet({ title: e.title, actions: [
-      { label: 'Exporter…', icon: 'share', run: exportMenu },
-      { label: 'Envoyer par mail', icon: 'share', run: mailChoice },
-      { label: 'Supprimer l\'entretien', icon: 'trash', danger: true, run: deleteIt },
-    ] });
-  }  async function deleteIt() {
+  async function deleteIt() {
     const ok = await confirmDialog({ title: 'Supprimer cet entretien ?', danger: true, confirmLabel: 'Supprimer définitivement',
       message: `« ${e.title} » sera supprimé de cet appareil avec sa transcription, son compte rendu et son audio.\nCette action est irréversible. Pensez à faire une sauvegarde.` });
     if (!ok) return;
@@ -325,8 +336,9 @@ export async function ficheView({ params, query }) {
   // ----- onglet Transcription -----
   const REASONS = { remplacement: 'Remplacement', ajout: 'Ajout', collage: 'Collage', import: 'Import', correction: 'Correction', 'rétablissement': 'Rétablissement', 'avant suppression importante': 'Avant une suppression importante' };
   function transcriptTab() {
-    const ta = h('textarea', { class: 'textarea', style: { minHeight: '50dvh' }, spellcheck: 'false', autocorrect: 'off', 'aria-label': 'Transcription', placeholder: 'Aucune transcription. Appuyez sur « Coller » ou « Importer ».' });
+    const ta = h('textarea', { class: 'textarea doc doc-scroll', spellcheck: 'false', autocorrect: 'off', 'aria-label': 'Transcription', placeholder: 'Aucune transcription. Touchez « Ajouter du texte ».' });
     ta.value = S.transcriptOf(e);
+    const fit = autosize(ta);
     const stats = h('div', { class: 'stats' });
     const upd = () => { const w = S.wordCount(ta.value); stats.textContent = w ? `${w} mot${w > 1 ? 's' : ''} · ${ta.value.length} caractères` : ''; };
     ta.addEventListener('input', () => { e.transcript = ta.value; upd(); edit(); });
@@ -351,12 +363,12 @@ export async function ficheView({ params, query }) {
         toast('L\'enregistrement a échoué : le texte précédent est conservé (' + err.message + ').', 7000);
         return false;
       }
-      savedText = newText; ta.value = newText; upd(); histBtn.refresh();
+      savedText = newText; ta.value = newText; fit(); upd(); histBtn.refresh();
       saveState.textContent = 'Enregistré à ' + new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
       return true;
     }
-    const histBtn = h('button', { class: 'btn small', style: { marginTop: '10px' } }, icon('back'), h('span', {}));
-    histBtn.refresh = () => { const n = e.transcriptHistory.length; histBtn.hidden = !n; histBtn.lastChild.textContent = `Versions précédentes (${n})`; };
+    const histBtn = h('button', { class: 'round', 'aria-label': 'Versions précédentes', title: 'Versions précédentes' }, icon('clock'), h('b', {}));
+    histBtn.refresh = () => { const n = e.transcriptHistory.length; histBtn.hidden = !n; histBtn.lastChild.textContent = String(n); histBtn.setAttribute('aria-label', `Versions précédentes (${n})`); };
     histBtn.addEventListener('click', () => sheet({ title: 'Versions précédentes', build(body, close) {
       body.append(h('p', { class: 'hint', text: 'Avant chaque remplacement ou correction, le texte précédent est conservé ici (5 versions). Rétablir une version garde aussi le texte actuel.' }));
       e.transcriptHistory.forEach((v, i) => body.append(h('div', { class: 'card', style: { marginTop: '10px' } },
@@ -408,12 +420,11 @@ export async function ficheView({ params, query }) {
           h('button', { class: 'btn', text: 'Fermer', onclick: close })));
     } });
     return h('div', {},
-      h('div', { class: 'btn-row' },
-        h('button', { class: 'btn small primary', onclick: paste }, icon('clipboard'), h('span', { text: 'Coller' })),
-        h('button', { class: 'btn small', onclick: imp }, icon('upload'), h('span', { text: 'Importer' })),
+      h('div', { class: 'actions' },
+        h('button', { class: 'btn small primary', onclick: () => addTextMenu(paste, imp) }, icon('plus'), h('span', { text: 'Ajouter du texte' })),
         h('button', { class: 'btn small', onclick: fix }, icon('edit'), h('span', { text: 'Corriger' })),
-        h('button', { class: 'btn small', onclick: exportMenu }, icon('share'), h('span', { text: 'Exporter' }))),
-      histBtn, h('div', { style: { height: '12px' } }), ta, stats);
+        histBtn),
+      ta, stats);
   }
   // ----- onglet Compte rendu -----
   function mergeSections(existing, tpl) {
@@ -459,7 +470,7 @@ export async function ficheView({ params, query }) {
         S.hasTranscript(e) ? null : h('p', { class: 'hint', text: 'Ajoutez d\'abord la transcription.' }))
       : h('div', { class: 'card ia-card' },
         h('div', { class: 'rt serif', style: { fontSize: '19px', color: 'var(--ink)' } }, h('span', { text: 'Rédaction automatique' }), h('span', { class: 'badge', text: 'Non disponible' })),
-        h('p', { class: 'hint', text: AI_STATUS_TEXT + ' Rédigez le compte rendu ci-dessous : la trame vous guide rubrique par rubrique.' }),
+        h('p', { class: 'hint', text: 'Non activée sur cet appareil. Le compte rendu se rédige à la main, rubrique par rubrique.' }),
         h('a', { class: 'btn small', href: '#/reglages' }, icon('gear'), h('span', { text: 'Réglages de l\'IA' })));
 
     function renderBody() {
@@ -485,10 +496,7 @@ export async function ficheView({ params, query }) {
         const n = await promptDialog({ title: 'Nouvelle rubrique', label: 'Titre de la rubrique', confirmLabel: 'Ajouter' });
         if (n) { sections().push({ id: S.uid('r'), title: n, content: '' }); edit(); renderBody(); }
       } }, icon('plus'), h('span', { text: 'Ajouter une rubrique' })));
-      box.append(h('div', { class: 'btn-row', style: { marginTop: '6px' } },
-        h('button', { class: 'btn', onclick: async () => { const ok = S.hasReport(e) && (await copyText(reportText(e, folders, tplName()))); toast(ok ? 'Compte rendu copié' : 'Rien à copier pour le moment'); } }, icon('copy'), h('span', { text: 'Copier' })),
-        h('button', { class: 'btn', onclick: exportMenu }, icon('share'), h('span', { text: 'Exporter' }))),
-        h('button', { class: 'btn primary', style: { marginTop: '10px' }, onclick: mailChoice }, icon('share'), h('span', { text: 'Envoyer par mail' })));
+      /* Copier, exporter et envoyer par mail : menu « Partager » en haut de la fiche */
     }
     renderBody();
     const prevRep = e.reportHistory[0];
@@ -510,7 +518,7 @@ export async function ficheView({ params, query }) {
     const catBox = h('div', { class: 'catpick' });
     const folderBtn = h('button', { class: 'pickrow' }, h('span', {}), icon('chevron'));
     const path = () => (e.folderId ? S.folderPath(e.folderId, folders).map((f) => f.name).join(' › ') : e.category ? 'Racine de « ' + catLabel(e.category) + ' »' : 'Non classé');
-    const upd = () => { folderBtn.firstChild.textContent = path(); meta.textContent = metaLine(e, folders); };
+    const upd = () => { folderBtn.firstChild.textContent = path(); renderMeta(); };
     folderBtn.addEventListener('click', async () => {
       const r = await pickFolder({ folders, current: { category: e.category, folderId: e.folderId }, title: 'Déplacer l\'entretien vers…' });
       if (r) { e.category = r.category; e.folderId = r.folderId; edit(); upd(); renderCats(); }
@@ -526,8 +534,8 @@ export async function ficheView({ params, query }) {
     const ci = catInfo(e.category) || {};
     const whoInp = h('input', { class: 'field', type: 'text', maxlength: '80', value: e.who, placeholder: ci.whoHint || '', 'aria-label': ci.whoLabel || 'Nom' });
     const subjInp = h('input', { class: 'field', type: 'text', maxlength: '100', value: e.subject, placeholder: ci.subjectHint || '', 'aria-label': ci.subjectLabel || 'Sujet' });
-    whoInp.addEventListener('input', () => { e.who = whoInp.value; syncTitle(); edit(); });
-    subjInp.addEventListener('input', () => { e.subject = subjInp.value; syncTitle(); edit(); });
+    whoInp.addEventListener('input', () => { e.who = whoInp.value; syncTitle(); renderMeta(); edit(); });
+    subjInp.addEventListener('input', () => { e.subject = subjInp.value; syncTitle(); renderMeta(); edit(); });
     const autoBtn = h('button', { class: 'btn small', style: { marginTop: '8px' }, onclick: () => { e.titleAuto = true; syncTitle(); edit(); toast('Titre recomposé automatiquement'); renderBody(); } }, icon('sparkle'), h('span', { text: e.titleAuto ? 'Le titre suit ces informations' : 'Recomposer le titre avec ces informations' }));
     const srcLabel = { texte: 'Texte collé ou importé', micro: 'Enregistrement (laboratoire)', import: 'Audio importé (laboratoire)' }[e.source] || 'Texte';
     const kv = (k, v) => h('div', { class: 'kv' }, h('span', { text: k }), h('span', { text: v }));
@@ -558,7 +566,7 @@ export async function ficheView({ params, query }) {
 
   const el = h('div', { class: 'view' },
     topbar({ back: async () => { await saver.flush(); go('#/bibliotheque' + (e.category ? '?cat=' + e.category + (e.folderId ? '&f=' + e.folderId : '') : '')); }, backLabel: 'Bibliothèque',
-      right: h('button', { class: 'iconbtn', 'aria-label': 'Plus d\'actions', onclick: menu }, icon('more')) }),
+      right: h('button', { class: 'btn small', onclick: shareMenu }, icon('share'), h('span', { text: 'Partager' })) }),
     titleInp, meta, saveState,
     S.hasAudio(e) ? audioCard() : null,
     tabs, body);
