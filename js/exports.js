@@ -4,7 +4,7 @@ import { reportOf, folderPath } from './store.js';
 
 export const fmtDate = (ms) => new Date(ms).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
 export const fmtDateTime = (ms) => new Date(ms).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-export const safeName = (s) => (s || 'entretien').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w\- ]+/g, '_').trim().replace(/\s+/g, '-').slice(0, 60) || 'entretien';
+export const safeName = (s) => (s || 'entretien').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+[—–]\s+/g, ' - ').replace(/\//g, '-').replace(/[^\w\- ]+/g, '_').trim().replace(/\s+/g, '-').replace(/-{2,}/g, '-').slice(0, 90) || 'entretien';
 
 export function metaLine(e, folders) {
   const path = e.folderId ? folderPath(e.folderId, folders).map((f) => f.name).join(' › ') : '';

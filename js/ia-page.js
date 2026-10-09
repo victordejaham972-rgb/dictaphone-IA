@@ -104,6 +104,7 @@ function showMessage(title, text, extra) {
         return { id: old ? old.id : S.uid('r'), title: s.title, content: keepOld ? old.content : s.content === 'Non évoqué' ? (old && (old.content || '').trim() ? old.content : '') : s.content, ia: !keepOld && s.content !== 'Non évoqué' };
       });
       for (const x of existing) if (!merged.some((m) => m.id === x.id) && (x.content || '').trim()) merged.push(x);
+      if (existing.some((x) => (x.content || '').trim())) e.reportHistory = S.pushHistory(e.reportHistory, { text: JSON.stringify(existing), reason: 'avant rédaction IA' });
       e.reportSections = merged; e.templateId = template ? template.id : e.templateId;
       e.iaInfo = { model: model.model, label: model.label, date: Date.now(), seconds: Math.round(stats.seconds) };
       await S.saveEntretien(e);

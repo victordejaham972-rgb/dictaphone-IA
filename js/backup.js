@@ -61,6 +61,7 @@ const idOk = (v) => typeof v === 'string' && /^[\w-]{1,64}$/.test(v);
 const num = (v, d = 0) => (Number.isFinite(v) ? v : d);
 const catOk = (v) => (CATEGORIES.some((c) => c.id === v) ? v : null);
 
+const hist = (l) => (Array.isArray(l) ? l.slice(0, 5).filter((v) => v && typeof v.text === 'string' && v.text.trim()).map((v) => ({ text: v.text.slice(0, 3000000), reason: str(v.reason, 60), source: str(v.source, 200), date: num(v.date, Date.now()) })) : []);
 // Ne garde que les champs connus et de type valide (le contenu du fichier n'est jamais exécuté ni inséré tel quel).
 export function sanitize(obj) {
   if (obj.version > VERSION) throw new Error('Cette sauvegarde vient d\'une version plus récente de l\'application. Mettez l\'application à jour.');
@@ -79,6 +80,8 @@ export function sanitize(obj) {
     templateId: idOk(s.templateId) ? s.templateId : null,
     transcript: typeof s.transcript === 'string' ? s.transcript.slice(0, 3000000) : null,
     reportSections: Array.isArray(s.reportSections) ? s.reportSections.slice(0, 80).map((r) => ({ id: idOk(r && r.id) ? r.id : uid('r'), title: str(r && r.title, 200), content: str(r && r.content) })) : null,
+    who: str(s.who, 120), subject: str(s.subject, 160), titleAuto: !!s.titleAuto,
+    transcriptHistory: hist(s.transcriptHistory), reportHistory: hist(s.reportHistory),
     summary: str(s.summary), source: str(s.source, 20) || 'texte',
     segments: Array.isArray(s.segments) ? s.segments.slice(0, 20000).map((g) => ({ t: num(g && g.t), text: str(g && g.text, 5000) })) : [],
     bookmarks: [], createdAt: num(s.createdAt, Date.now()), updatedAt: num(s.updatedAt, Date.now()),

@@ -1,9 +1,14 @@
 // Catégories et trames d'origine. Les trames sont ensuite modifiables dans l'application.
+// who* / subject* : champs servant à composer automatiquement le titre « Nom — Sujet — jj/mm/aaaa ».
 export const CATEGORIES = [
-  { id: 'clients', label: 'Entretiens clients', short: 'Clients', hint: 'Rendez-vous et échanges avec les clients' },
-  { id: 'webinaires', label: 'Webinaires', short: 'Webinaires', hint: 'Conférences, formations, présentations' },
-  { id: 'internes', label: 'Réunions internes', short: 'Internes', hint: 'Réunions, discussions et échanges avec les collaborateurs' },
+  { id: 'clients', label: 'Entretiens clients', short: 'Clients', hint: 'Rendez-vous et échanges avec les clients',
+    whoLabel: 'Nom du client', whoHint: 'Ex. Martin', subjectLabel: 'Sujet principal de l\'entretien', subjectHint: 'Ex. Bilan patrimonial', fallback: 'Entretien client' },
+  { id: 'webinaires', label: 'Webinaires', short: 'Webinaires', hint: 'Conférences, formations, présentations',
+    whoLabel: 'Société ou organisateur', whoHint: 'Ex. Société Exemple', subjectLabel: 'Sujet principal du webinaire', subjectHint: 'Ex. Perspectives des marchés', fallback: 'Webinaire' },
+  { id: 'internes', label: 'Réunions internes', short: 'Internes', hint: 'Réunions, discussions et échanges avec les collaborateurs',
+    whoLabel: 'Équipe ou personnes concernées (facultatif)', whoHint: 'Ex. Réunion équipe', subjectLabel: 'Objet principal de la réunion', subjectHint: 'Ex. Suivi des dossiers', fallback: 'Réunion interne' },
 ];
+export const catInfo = (id) => CATEGORIES.find((c) => c.id === id) || null;
 export const catLabel = (id) => (CATEGORIES.find((c) => c.id === id) || {}).label || 'Non classé';
 export const catShort = (id) => (CATEGORIES.find((c) => c.id === id) || {}).short || 'Non classé';
 

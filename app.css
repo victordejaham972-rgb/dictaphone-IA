@@ -97,7 +97,7 @@ select.field { background-image: linear-gradient(45deg, transparent 50%, var(--m
 .row:last-child { border-bottom: 0; }
 .row:active { background: var(--surface2); }
 .row .grow { flex: 1; min-width: 0; }
-.row .t { font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .t { font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; line-height: 1.3; }
 .row .m { font-size: 13px; color: var(--muted); margin-top: 1px; }
 .row .more { border: 0; background: none; color: var(--muted); width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; flex: none; }
 .row .chev { color: var(--muted); flex: none; }

@@ -56,7 +56,7 @@ export async function libraryView({ query }) {
   function entretienMenu(e) {
     actionSheet({ title: e.title, actions: [
       { label: 'Ouvrir', icon: 'doc', run: () => go('#/entretien/' + e.id) },
-      { label: 'Renommer', icon: 'edit', run: async () => { const n = await promptDialog({ title: 'Renommer l\'entretien', value: e.title }); if (n) { e.title = n; await S.saveEntretien(e); reload(); toast('Entretien renommé'); } } },
+      { label: 'Renommer', icon: 'edit', run: async () => { const n = await promptDialog({ title: 'Renommer l\'entretien', value: e.title }); if (n) { e.title = n; e.titleAuto = false; await S.saveEntretien(e); reload(); toast('Entretien renommé'); } } },
       { label: 'Déplacer', icon: 'move', run: async () => {
         const r = await pickFolder({ folders, current: { category: e.category, folderId: e.folderId }, title: 'Déplacer l\'entretien vers…' });
         if (r) { e.category = r.category; e.folderId = r.folderId; await S.saveEntretien(e); reload(); toast('Entretien déplacé'); }
@@ -79,7 +79,7 @@ export async function libraryView({ query }) {
     const flat = (items) => h('div', { class: 'list' }, items.sort(sort).map((e) => entretienRow(e, { onMore: entretienMenu, showCat: !cat })));
 
     if (q) {
-      const hits = entretiens.filter(inCat).filter((e) => norm(e.title + ' ' + S.transcriptOf(e) + ' ' + S.reportOf(e).map((r) => r.title + ' ' + r.content).join(' ')).includes(q));
+      const hits = entretiens.filter(inCat).filter((e) => norm(e.title + ' ' + (e.who || '') + ' ' + (e.subject || '') + ' ' + S.transcriptOf(e) + ' ' + S.reportOf(e).map((r) => r.title + ' ' + r.content).join(' ')).includes(q));
       listBox.append(h('p', { class: 'hint', text: hits.length + ' résultat' + (hits.length > 1 ? 's' : '') }), hits.length ? flat(hits) : empty('Aucun résultat', 'Essayez un autre mot.'));
       return;
     }

@@ -2,7 +2,7 @@
 // Compatibilité : un « entretien » est un enregistrement de l'espace « sessions » déjà utilisé par les anciennes versions.
 // Les anciens enregistrements ne sont JAMAIS modifiés à la lecture ; les nouveaux champs n'apparaissent qu'à la première sauvegarde.
 import * as DB from '../db.js';
-import { DEFAULT_TEMPLATES, DEFAULT_VOCAB } from './defaults.js';
+import { DEFAULT_TEMPLATES, DEFAULT_VOCAB, catInfo } from './defaults.js';
 
 export const uid = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const clone = (o) => JSON.parse(JSON.stringify(o));
@@ -15,6 +15,11 @@ export function normalize(s) {
   n.folderId = s.folderId ?? null;
   n.date = s.date ?? s.createdAt ?? Date.now();
   n.templateId = s.templateId ?? null;
+  n.who = typeof s.who === 'string' ? s.who : '';              // nom du client / organisateur / équipe
+  n.subject = typeof s.subject === 'string' ? s.subject : '';  // sujet principal
+  n.titleAuto = !!s.titleAuto;                                  // le titre suit automatiquement ces informations
+  n.transcriptHistory = Array.isArray(s.transcriptHistory) ? s.transcriptHistory : [];
+  n.reportHistory = Array.isArray(s.reportHistory) ? s.reportHistory : [];
   n.transcript = typeof s.transcript === 'string' ? s.transcript : null;
   n.reportSections = Array.isArray(s.reportSections) ? s.reportSections : null;
   n.summary = s.summary || '';
@@ -26,6 +31,21 @@ export function normalize(s) {
   n.lastOpened = s.lastOpened ?? 0;
   return n;
 }
+// ---------- Titre : « Nom — Sujet — jj/mm/aaaa » ----------
+export const fmtDay = (ms) => { const d = new Date(ms); return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear(); };
+export function composeTitle(category, who, subject, dateMs) {
+  const info = catInfo(category);
+  const parts = [(who || '').trim() || (info ? info.fallback : 'Entretien'), (subject || '').trim(), fmtDay(dateMs || Date.now())].filter(Boolean);
+  return parts.join(' — ');
+}
+
+// ---------- Historique des versions (aucune perte lors d'un remplacement) ----------
+const HIST_MAX = 5;
+export function pushHistory(list, entry) {
+  if (!entry || !String(entry.text || '').trim()) return list || [];
+  return [{ ...entry, date: Date.now() }, ...(list || [])].slice(0, HIST_MAX);
+}
+
 export const transcriptOf = (e) => (e.transcript !== null ? e.transcript : e.segments.map((g) => g.text).filter(Boolean).join('\n'));
 export const hasTranscript = (e) => transcriptOf(e).trim().length > 0;
 export function reportOf(e) {
@@ -45,10 +65,10 @@ export async function saveEntretien(e) {
   await DB.putSession(e);
   return e;
 }
-export async function createEntretien({ title, category, folderId = null, date, templateId = null, transcript = '' }) {
+export async function createEntretien({ title, category, folderId = null, date, templateId = null, transcript = '', who = '', subject = '', titleAuto = false }) {
   const now = Date.now();
   const e = normalize({
-    id: uid('e'), name: title, title, category, folderId, date: date || now, templateId, transcript,
+    id: uid('e'), name: title, title, category, folderId, date: date || now, templateId, transcript, who, subject, titleAuto,
     reportSections: null, source: 'texte', createdAt: now, updatedAt: now,
     nChunks: 0, durationSec: 0, doneChunks: 0, segments: [], summary: '', bookmarks: [], hasOriginal: false,
   });

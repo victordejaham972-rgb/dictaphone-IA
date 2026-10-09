@@ -1,36 +1,18 @@
 // Création d'un entretien et fiche détaillée (transcription, compte rendu, informations).
 import { h, icon, catIcon, toast, confirmDialog, promptDialog, actionSheet, sheet, autosize, debouncedSaver, empty } from './ui.js';
-import { CATEGORIES, catLabel } from './defaults.js';
+import { CATEGORIES, catLabel, catInfo } from './defaults.js';
 import * as S from './store.js';
 import { go, topbar, pickFolder } from './common.js';
 import { fmtDate, fmtDateTime, reportText, copyText, downloadText, shareOrDownload, printReport, safeName, metaLine, reportPdfFile, validEmail, splitAddresses, mailtoHref, openMailto } from './exports.js';
 import { AI_STATUS_TEXT } from './ai.js';
 import { usableModel } from './ia-local.js';
 import { buildWavBlob } from '../audio.js';
+import { cleanText, pickFile, readImport, previewImport, words as wordsOf } from './import.js';
 
 const pad = (n) => String(n).padStart(2, '0');
 const toLocalInput = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 const fromLocalInput = (v) => { const t = new Date(v).getTime(); return Number.isFinite(t) ? t : Date.now(); };
 const fmtDur = (s) => { s = Math.max(0, Math.floor(s)); const hh = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60; return (hh ? hh + ':' + pad(m) : m) + ':' + pad(x); };
-
-// Nettoyage d'un texte collé ou importé : caractères de contrôle retirés, fins de ligne normalisées
-export const cleanText = (t) => t.replace(/^﻿/, '').replace(/\r\n?/g, '\n').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '').replace(/\n{4,}/g, '\n\n\n');
-
-async function readTextFile(file) {
-  if (file.size > 8 * 1024 * 1024) throw new Error('Fichier trop volumineux (8 Mo maximum).');
-  const buf = await file.arrayBuffer();
-  const head = new Uint8Array(buf.slice(0, 5));
-  if (String.fromCharCode(...head) === '{\\rtf') throw new Error('Format RTF non pris en charge : enregistrez la transcription au format texte (.txt) ou collez-la.');
-  if (head[0] === 0x50 && head[1] === 0x4b) throw new Error('Les fichiers Word (.docx) ne sont pas pris en charge : copiez le texte puis collez-le.');
-  let text = new TextDecoder('utf-8').decode(buf);
-  if ((head[0] === 0xff && head[1] === 0xfe)) text = new TextDecoder('utf-16le').decode(buf);
-  return cleanText(text);
-}
-const pickTextFile = () => new Promise((resolve) => {
-  const inp = h('input', { type: 'file', accept: '.txt,.text,.md,text/plain', style: { display: 'none' } });
-  inp.addEventListener('change', () => resolve(inp.files[0] || null));
-  document.body.append(inp); inp.click(); setTimeout(() => inp.remove(), 60000);
-});
 
 // =====================================================================
 // NOUVEL ENTRETIEN
@@ -41,11 +23,12 @@ export async function newView({ query }) {
   let d = {};
   try { d = JSON.parse(localStorage.getItem(DRAFT)) || {}; } catch {}
   const st = {
-    title: d.title || '', category: CATEGORIES.some((c) => c.id === query.cat) ? query.cat : (d.category || S.getSettings().lastCategory || 'clients'),
+    category: CATEGORIES.some((c) => c.id === query.cat) ? query.cat : (d.category || S.getSettings().lastCategory || 'clients'),
+    who: d.who || '', subject: d.subject || '', title: d.title || '', titleManual: !!d.titleManual,
     folderId: query.f || d.folderId || null, date: d.date || Date.now(), templateId: d.templateId || null, transcript: d.transcript || '',
   };
   if (query.cat && d.category && d.category !== query.cat) { st.templateId = null; if (!query.f) st.folderId = null; }
-  const restored = !!(d.title || d.transcript);
+  const restored = !!(d.who || d.subject || d.title || d.transcript);
   const valid = (id) => !id || folders.some((f) => f.id === id && f.category === st.category);
   if (!valid(st.folderId)) st.folderId = null;
   const tplFor = () => templates.filter((t) => t.category === st.category);
@@ -53,9 +36,24 @@ export async function newView({ query }) {
 
   const saveDraft = () => { try { localStorage.setItem(DRAFT, JSON.stringify(st)); } catch {} };
   const clearDraft = () => { try { localStorage.removeItem(DRAFT); } catch {} };
+  const info = () => catInfo(st.category);
 
-  const title = h('input', { class: 'field', type: 'text', placeholder: 'Ex. Rendez-vous de suivi', value: st.title, maxlength: '120', autocapitalize: 'sentences' });
-  title.addEventListener('input', () => { st.title = title.value; saveDraft(); });
+  // ----- titre composé automatiquement : « Nom — Sujet — jj/mm/aaaa » (modifiable) -----
+  const whoLbl = h('label', { class: 'lbl' }), subjLbl = h('label', { class: 'lbl' });
+  const whoInp = h('input', { class: 'field', type: 'text', maxlength: '80', autocapitalize: 'words', value: st.who });
+  const subjInp = h('input', { class: 'field', type: 'text', maxlength: '100', autocapitalize: 'sentences', value: st.subject });
+  const titleInp = h('input', { class: 'field', type: 'text', maxlength: '160', 'aria-label': 'Titre de la fiche', value: st.title });
+  const titleHint = h('p', { class: 'hint', style: { margin: '6px 0 0' } });
+  const resetTitle = h('button', { class: 'btn small', style: { marginTop: '8px' }, hidden: true, text: 'Recomposer le titre automatiquement' });
+  const refreshTitle = () => {
+    if (!st.titleManual) { st.title = S.composeTitle(st.category, st.who, st.subject, st.date); titleInp.value = st.title; }
+    titleHint.textContent = st.titleManual ? 'Titre modifié à la main : il ne suit plus les champs ci-dessus.' : 'Titre composé automatiquement : vous pouvez le modifier.';
+    resetTitle.hidden = !st.titleManual;
+  };
+  whoInp.addEventListener('input', () => { st.who = whoInp.value; refreshTitle(); saveDraft(); });
+  subjInp.addEventListener('input', () => { st.subject = subjInp.value; refreshTitle(); saveDraft(); });
+  titleInp.addEventListener('input', () => { st.title = titleInp.value; st.titleManual = true; refreshTitle(); saveDraft(); });
+  resetTitle.addEventListener('click', () => { st.titleManual = false; refreshTitle(); saveDraft(); });
 
   const catBox = h('div', { class: 'catpick' });
   const folderBtn = h('button', { class: 'pickrow', onclick: async () => {
@@ -63,8 +61,8 @@ export async function newView({ query }) {
     if (r) { st.folderId = r.folderId; saveDraft(); renderFolder(); }
   } }, h('span', {}), icon('chevron'));
   const tplSel = h('select', { class: 'field', 'aria-label': 'Trame de compte rendu' });
-  const dateInp = h('input', { class: 'field', type: 'datetime-local', value: toLocalInput(st.date), 'aria-label': 'Date de l\'entretien' });
-  dateInp.addEventListener('change', () => { st.date = fromLocalInput(dateInp.value); saveDraft(); });
+  const dateInp = h('input', { class: 'field', type: 'datetime-local', value: toLocalInput(st.date), 'aria-label': 'Date de la réunion' });
+  dateInp.addEventListener('change', () => { st.date = fromLocalInput(dateInp.value); refreshTitle(); saveDraft(); });
   const ta = h('textarea', { class: 'textarea', placeholder: 'Collez ici la transcription (appui long, puis « Coller »).', rows: '8', spellcheck: 'false', autocorrect: 'off' });
   ta.value = st.transcript;
   const stats = h('div', { class: 'stats' });
@@ -72,10 +70,15 @@ export async function newView({ query }) {
   ta.addEventListener('input', () => { st.transcript = ta.value; updStats(); saveDraft(); });
   updStats();
 
+  function renderLabels() {
+    const c = info();
+    whoLbl.textContent = c.whoLabel; whoInp.placeholder = c.whoHint;
+    subjLbl.textContent = c.subjectLabel; subjInp.placeholder = c.subjectHint;
+  }
   function renderCats() {
     catBox.textContent = '';
     for (const c of CATEGORIES) catBox.append(h('button', { class: st.category === c.id ? 'on' : '', 'aria-pressed': String(st.category === c.id), onclick: () => {
-      if (st.category !== c.id) { st.category = c.id; st.folderId = null; const dt = S.defaultTemplateFor(templates, c.id); st.templateId = dt ? dt.id : null; saveDraft(); renderCats(); renderFolder(); renderTpl(); }
+      if (st.category !== c.id) { st.category = c.id; st.folderId = null; const dt = S.defaultTemplateFor(templates, c.id); st.templateId = dt ? dt.id : null; saveDraft(); renderCats(); renderFolder(); renderTpl(); renderLabels(); refreshTitle(); }
     } }, h('div', { class: 'tile', style: { width: '40px', height: '40px' } }, catIcon(c.id)), h('div', {}, h('div', { style: { fontWeight: 600, color: 'var(--ink)' }, text: c.label }), h('div', { class: 'hint', style: { margin: 0 }, text: c.hint }))));
   }
   function renderFolder() {
@@ -90,38 +93,48 @@ export async function newView({ query }) {
     tplSel.value = st.templateId || '';
   }
   tplSel.addEventListener('change', () => { st.templateId = tplSel.value || null; saveDraft(); });
-  renderCats(); renderFolder(); renderTpl();
+  renderCats(); renderFolder(); renderTpl(); renderLabels(); refreshTitle();
 
-  function setText(text, mode) {
-    ta.value = mode === 'append' && ta.value.trim() ? ta.value.replace(/\s+$/, '') + '\n\n' + text : text;
-    st.transcript = ta.value; saveDraft(); updStats();
+  // ----- importation : aperçu obligatoire, ancien texte conservé -----
+  let previous = null;   // texte avant le dernier changement (annulation)
+  const undoBtn = h('button', { class: 'btn small', style: { marginTop: '10px' }, hidden: true }, icon('back'), h('span', { text: 'Rétablir le texte précédent' }));
+  undoBtn.addEventListener('click', () => {
+    if (previous === null) return;
+    const cur = ta.value; ta.value = previous; previous = cur; st.transcript = ta.value; updStats(); saveDraft(); toast('Texte précédent rétabli');
+  });
+  async function receive(incoming, meta) {
+    const existing = ta.value;
+    if (!meta.file && !existing.trim()) { ta.value = incoming; }       // collage dans une zone vide : pas de risque
+    else {
+      const mode = await previewImport({ existing, incoming, name: meta.name, kind: meta.kind, info: meta.info });
+      if (!mode) return;
+      ta.value = mode === 'append' ? existing.replace(/\s+$/, '') + '\n\n' + incoming : incoming;
+      if (existing.trim()) { previous = existing; undoBtn.hidden = false; }
+    }
+    st.transcript = ta.value; updStats(); saveDraft();
+    toast(meta.file ? 'Fichier importé' : 'Transcription collée');
   }
-  const withMode = (text) => {
-    if (!ta.value.trim()) return setText(text, 'replace');
-    actionSheet({ title: 'Un texte est déjà présent', actions: [
-      { label: 'Remplacer le texte actuel', icon: 'edit', run: () => setText(text, 'replace') },
-      { label: 'Ajouter à la suite', icon: 'plus', run: () => setText(text, 'append') },
-    ] });
-  };
   async function paste() {
     try {
       const t = cleanText(await navigator.clipboard.readText());
       if (!t.trim()) { toast('Le presse-papiers est vide.'); ta.focus(); return; }
-      withMode(t); toast('Transcription collée');
+      await receive(t, { name: 'Texte collé', kind: 'txt' });
     } catch {
       toast('Appuyez longuement dans la zone de texte, puis « Coller ».', 4200); ta.focus();
     }
   }
   async function importFile() {
-    const f = await pickTextFile();
+    const f = await pickFile();
     if (!f) return;
-    try { withMode(await readTextFile(f)); toast('Fichier importé'); } catch (err) { toast(err.message, 5000); }
+    toast('Lecture du fichier…', 2000);
+    try { const r = await readImport(f); await receive(r.text, { name: r.name, kind: r.kind, info: r.info, file: true }); }
+    catch (err) { toast(err.message, 6500); }
   }
 
   async function create() {
     const cat = st.category;
-    const t = (st.title || '').trim() || `${CATEGORIES.find((c) => c.id === cat).short} du ${new Date(st.date).toLocaleDateString('fr-FR')}`;
-    const e = await S.createEntretien({ title: t, category: cat, folderId: st.folderId, date: st.date, templateId: st.templateId, transcript: cleanText(ta.value) });
+    const t = (st.title || '').trim() || S.composeTitle(cat, st.who, st.subject, st.date);
+    const e = await S.createEntretien({ title: t, category: cat, folderId: st.folderId, date: st.date, templateId: st.templateId, transcript: cleanText(ta.value), who: st.who.trim(), subject: st.subject.trim(), titleAuto: !st.titleManual });
     S.setSetting('lastCategory', cat);
     clearDraft();
     toast('Entretien créé');
@@ -131,23 +144,24 @@ export async function newView({ query }) {
   const el = h('div', { class: 'view' },
     topbar({ back: () => go('#/'), backLabel: 'Accueil' }),
     h('div', { class: 'eyebrow', text: 'Nouvel entretien' }),
-    h('h1', { class: 'page-title', text: 'Collez votre transcription' }),
+    h('h1', { class: 'page-title', text: 'Nouvelle fiche' }),
     h('div', { class: 'rule' }),
-    restored ? h('div', { class: 'banner' }, icon('info'), h('div', {}, h('div', { text: 'Votre brouillon a été conservé.' }), h('button', { text: 'Effacer le brouillon', onclick: async () => { if (await confirmDialog({ title: 'Effacer le brouillon ?', message: 'Le titre et le texte saisis seront effacés.', confirmLabel: 'Effacer', danger: true })) { clearDraft(); location.reload(); } } }))) : null,
-    h('label', { class: 'lbl', text: 'Titre' }), title,
-    h('label', { class: 'lbl', text: 'Catégorie' }), catBox,
-    h('label', { class: 'lbl', text: 'Dossier' }), folderBtn,
+    restored ? h('div', { class: 'banner' }, icon('info'), h('div', {}, h('div', { text: 'Votre brouillon a été conservé.' }), h('button', { text: 'Effacer le brouillon', onclick: async () => { if (await confirmDialog({ title: 'Effacer le brouillon ?', message: 'Les informations et le texte saisis seront effacés.', confirmLabel: 'Effacer', danger: true })) { clearDraft(); location.reload(); } } }))) : null,
+    h('label', { class: 'lbl', style: { marginTop: 0 }, text: 'Catégorie' }), catBox,
+    whoLbl, whoInp, subjLbl, subjInp,
     h('label', { class: 'lbl', text: 'Date' }), dateInp,
+    h('label', { class: 'lbl', text: 'Titre de la fiche' }), titleInp, titleHint, resetTitle,
+    h('label', { class: 'lbl', text: 'Dossier' }), folderBtn,
     h('label', { class: 'lbl', text: 'Trame du compte rendu' }), tplSel,
     h('div', { class: 'sec-head' }, h('h2', { text: 'Transcription' })),
-    h('p', { class: 'hint', style: { marginTop: '-4px' }, text: 'Copiez la transcription depuis le Dictaphone d\'Apple, puis collez-la ici.' }),
+    h('p', { class: 'hint', style: { marginTop: '-4px' }, text: 'Copiez la transcription depuis le Dictaphone d\'Apple, puis collez-la ici, ou importez un fichier texte ou PDF.' }),
     h('button', { class: 'btn primary bigpaste', onclick: paste }, icon('clipboard'), h('span', { text: 'Coller une transcription' })),
-    h('button', { class: 'btn', style: { marginTop: '10px' }, onclick: importFile }, icon('upload'), h('span', { text: 'Importer un fichier texte (.txt)' })),
+    h('button', { class: 'btn', style: { marginTop: '10px' }, onclick: importFile }, icon('upload'), h('span', { text: 'Importer un fichier (.txt ou PDF)' })),
+    undoBtn,
     h('div', { style: { height: '12px' } }), ta, stats,
     h('div', { class: 'stickybar' }, h('button', { class: 'btn primary', onclick: create }, icon('check'), h('span', { text: 'Créer l\'entretien' }))));
   return { el };
 }
-
 // =====================================================================
 // FICHE D'UN ENTRETIEN
 // =====================================================================
@@ -157,16 +171,21 @@ export async function ficheView({ params, query }) {
   let tab = ['transcription', 'compte-rendu', 'infos'].includes(query.tab) ? query.tab : 'transcription';
   const tplName = () => (templates.find((t) => t.id === e.templateId) || {}).name || '';
   const saveState = h('div', { class: 'savestate', 'aria-live': 'polite' });
-  const saver = debouncedSaver(async () => { await S.saveEntretien(e); saveState.textContent = 'Enregistré à ' + new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }); });
+  let savedText = S.transcriptOf(e);   // dernier texte enregistré (sert à détecter une suppression massive)
+  const saver = debouncedSaver(async () => {
+    const cur = S.transcriptOf(e);
+    if (savedText.trim() && cur.trim().length < savedText.trim().length * 0.3) e.transcriptHistory = S.pushHistory(e.transcriptHistory, { text: savedText, reason: 'avant suppression importante' });
+    savedText = cur;
+    await S.saveEntretien(e); saveState.textContent = 'Enregistré à ' + new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }); });
   const edit = () => { saveState.textContent = 'Modification…'; saver.trigger(); };
   const cleanups = [];
 
   // ----- en-tête -----
   // Titre sur plusieurs lignes si nécessaire (un champ à une seule ligne couperait les titres longs)
-  const titleInp = h('textarea', { class: 'title-input', rows: '1', 'aria-label': 'Titre de l\'entretien', maxlength: '120', enterkeyhint: 'done' });
+  const titleInp = h('textarea', { class: 'title-input', rows: '1', 'aria-label': 'Titre de l\'entretien', maxlength: '160', enterkeyhint: 'done' });
   titleInp.value = e.title;
   const fitTitle = () => { titleInp.style.height = 'auto'; titleInp.style.height = titleInp.scrollHeight + 'px'; };
-  titleInp.addEventListener('input', () => { e.title = titleInp.value.replace(/\n/g, ' ') || 'Sans titre'; fitTitle(); edit(); });
+  titleInp.addEventListener('input', () => { e.title = titleInp.value.replace(/\n/g, ' ') || 'Sans titre'; e.titleAuto = false; fitTitle(); edit(); });
   titleInp.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); titleInp.blur(); } });
   requestAnimationFrame(fitTitle);
   const meta = h('div', { class: 'hint', style: { marginTop: 0 }, text: metaLine(e, folders) });
@@ -265,44 +284,88 @@ export async function ficheView({ params, query }) {
   }
 
   // ----- onglet Transcription -----
+  const REASONS = { remplacement: 'Remplacement', ajout: 'Ajout', collage: 'Collage', import: 'Import', correction: 'Correction', 'rétablissement': 'Rétablissement', 'avant suppression importante': 'Avant une suppression importante' };
   function transcriptTab() {
-    if (e.transcript === null && !S.hasTranscript(e)) { /* aucune transcription : le champ est simplement vide */ }
     const ta = h('textarea', { class: 'textarea', style: { minHeight: '50dvh' }, spellcheck: 'false', autocorrect: 'off', 'aria-label': 'Transcription', placeholder: 'Aucune transcription. Appuyez sur « Coller » ou « Importer ».' });
     ta.value = S.transcriptOf(e);
     const stats = h('div', { class: 'stats' });
-    let undo = null;
     const upd = () => { const w = S.wordCount(ta.value); stats.textContent = w ? `${w} mot${w > 1 ? 's' : ''} · ${ta.value.length} caractères` : ''; };
-    const commit = (text, keepUndo = true) => { if (keepUndo) undo = ta.value; ta.value = text; e.transcript = text; upd(); edit(); };
     ta.addEventListener('input', () => { e.transcript = ta.value; upd(); edit(); });
     upd();
-    const withMode = (text) => {
-      if (!ta.value.trim()) return commit(text);
-      actionSheet({ title: 'Un texte est déjà présent', actions: [
-        { label: 'Remplacer le texte actuel', icon: 'edit', run: () => commit(text) },
-        { label: 'Ajouter à la suite', icon: 'plus', run: () => commit(ta.value.replace(/\s+$/, '') + '\n\n' + text) },
-      ] });
-    };
+
+    // Changement de la transcription avec sécurité : l'ancien texte est mis dans l'historique, le nouveau est enregistré
+    // PUIS relu depuis la base. En cas d'échec, tout est remis dans l'état précédent.
+    async function applyChange(newText, reason, source) {
+      await saver.flush();
+      const prevText = ta.value, prevTranscript = e.transcript, prevHistory = e.transcriptHistory.slice();
+      if (!newText.trim() && prevText.trim()) { toast('Contenu vide : le texte actuel est conservé.', 5000); return false; }
+      e.transcriptHistory = S.pushHistory(e.transcriptHistory, { text: prevText, reason, source: source || '' });
+      e.transcript = newText;
+      try {
+        await S.saveEntretien(e);
+        const back = await S.getEntretien(e.id);
+        if (!back || S.transcriptOf(back) !== newText) throw new Error('relecture différente');
+        if (prevText.trim() && !(back.transcriptHistory[0] && back.transcriptHistory[0].text === prevText)) throw new Error('historique non enregistré');
+      } catch (err) {
+        e.transcript = prevTranscript; e.transcriptHistory = prevHistory; ta.value = prevText;
+        try { await S.saveEntretien(e); } catch {}
+        toast('L\'enregistrement a échoué : le texte précédent est conservé (' + err.message + ').', 7000);
+        return false;
+      }
+      savedText = newText; ta.value = newText; upd(); histBtn.refresh();
+      saveState.textContent = 'Enregistré à ' + new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+      return true;
+    }
+    const histBtn = h('button', { class: 'btn small', style: { marginTop: '10px' } }, icon('back'), h('span', {}));
+    histBtn.refresh = () => { const n = e.transcriptHistory.length; histBtn.hidden = !n; histBtn.lastChild.textContent = `Versions précédentes (${n})`; };
+    histBtn.addEventListener('click', () => sheet({ title: 'Versions précédentes', build(body, close) {
+      body.append(h('p', { class: 'hint', text: 'Avant chaque remplacement ou correction, le texte précédent est conservé ici (5 versions). Rétablir une version garde aussi le texte actuel.' }));
+      e.transcriptHistory.forEach((v, i) => body.append(h('div', { class: 'card', style: { marginTop: '10px' } },
+        h('div', { class: 'kv' }, h('span', { text: REASONS[v.reason] || v.reason || 'Version' }), h('span', { text: fmtDateTime(v.date) })),
+        h('p', { class: 'hint', style: { margin: '6px 0' }, text: `${S.wordCount(v.text)} mots${v.source ? ' · ' + v.source : ''}` }),
+        h('p', { style: { margin: '0 0 10px', fontSize: '14px', whiteSpace: 'pre-wrap' }, text: v.text.slice(0, 160) + (v.text.length > 160 ? '…' : '') }),
+        h('button', { class: 'btn small', onclick: async () => { close(); const ok = await applyChange(v.text, 'rétablissement', 'version du ' + fmtDateTime(v.date)); toast(ok ? 'Version rétablie' : 'Rétablissement impossible'); } }, icon('back'), h('span', { text: 'Rétablir cette version' })))));
+      body.append(h('button', { class: 'btn', style: { marginTop: '14px' }, text: 'Fermer', onclick: close }));
+    } }));
+    histBtn.refresh();
+
+    // Réception d'un contenu (collage ou fichier) : aperçu obligatoire dès qu'un texte existe ou qu'il s'agit d'un fichier
+    async function receive(incoming, meta) {
+      const existing = ta.value;
+      if (!meta.file && !existing.trim()) { if (await applyChange(incoming, 'collage', meta.name)) toast('Transcription collée'); return; }
+      const mode = await previewImport({ existing, incoming, name: meta.name, kind: meta.kind, info: meta.info });
+      if (!mode) return;
+      const newText = mode === 'append' ? existing.replace(/\s+$/, '') + '\n\n' + incoming : incoming;
+      const ok = await applyChange(newText, mode === 'append' ? 'ajout' : mode === 'replace' ? 'remplacement' : 'import', meta.name);
+      if (ok) toast(mode === 'append' ? 'Texte ajouté à la suite' : mode === 'replace' ? 'Texte remplacé : l\'ancien reste dans « Versions précédentes »' : 'Fichier importé', 5000);
+    }
     const paste = async () => {
-      try { const t = cleanText(await navigator.clipboard.readText()); if (!t.trim()) return toast('Le presse-papiers est vide.'); withMode(t); toast('Transcription collée'); }
+      try { const t = cleanText(await navigator.clipboard.readText()); if (!t.trim()) return toast('Le presse-papiers est vide.'); await receive(t, { name: 'Texte collé', kind: 'txt' }); }
       catch { toast('Appuyez longuement dans la zone de texte, puis « Coller ».', 4200); ta.focus(); }
     };
-    const imp = async () => { const f = await pickTextFile(); if (!f) return; try { withMode(await readTextFile(f)); toast('Fichier importé'); } catch (err) { toast(err.message, 5000); } };
+    const imp = async () => {
+      const f = await pickFile(); if (!f) return;
+      toast('Lecture du fichier…', 2000);
+      try { const r = await readImport(f); await receive(r.text, { name: r.name, kind: r.kind, info: r.info, file: true }); }
+      catch (err) { toast(err.message, 6500); }
+    };
     const fix = () => sheet({ title: 'Corriger la transcription', build(body, close) {
       const find = h('input', { class: 'field', placeholder: 'Mot ou expression erronée', autocapitalize: 'none', autocorrect: 'off' });
       const rep = h('input', { class: 'field', placeholder: 'Remplacer par', autocapitalize: 'none', autocorrect: 'off' });
-      const doReplace = () => {
+      const doReplace = async () => {
         const f = find.value; if (!f) return find.focus();
         const parts = ta.value.split(f); const n = parts.length - 1;
         if (!n) return toast('Aucune occurrence trouvée.');
-        commit(parts.join(rep.value)); toast(`${n} remplacement${n > 1 ? 's' : ''}`); close();
+        close(); if (await applyChange(parts.join(rep.value), 'correction', `« ${f.slice(0, 30)} » → « ${rep.value.slice(0, 30)} »`)) toast(`${n} remplacement${n > 1 ? 's' : ''}`);
       };
       const vocab = S.getVocab();
+      const last = e.transcriptHistory[0];
       body.append(
         h('label', { class: 'lbl', text: 'Rechercher' }), find, h('label', { class: 'lbl', text: 'Remplacer par' }), rep,
         h('div', { class: 'sheet-actions' },
           h('button', { class: 'btn primary', text: 'Tout remplacer', onclick: doReplace }),
-          h('button', { class: 'btn', onclick: () => { const r = S.applyVocab(ta.value, vocab); if (!r.count) return toast('Aucune correction à appliquer.'); commit(r.text); toast(`${r.count} correction${r.count > 1 ? 's' : ''} du vocabulaire appliquée${r.count > 1 ? 's' : ''}`); close(); } }, icon('sparkle'), h('span', { text: `Appliquer mon vocabulaire (${vocab.length})` })),
-          undo !== null ? h('button', { class: 'btn', text: 'Annuler la dernière correction', onclick: () => { const cur = ta.value; ta.value = undo; e.transcript = undo; undo = cur; upd(); edit(); toast('Correction annulée'); close(); } }) : null,
+          h('button', { class: 'btn', onclick: async () => { const r = S.applyVocab(ta.value, vocab); if (!r.count) return toast('Aucune correction à appliquer.'); close(); if (await applyChange(r.text, 'correction', 'vocabulaire')) toast(`${r.count} correction${r.count > 1 ? 's' : ''} du vocabulaire appliquée${r.count > 1 ? 's' : ''}`); } }, icon('sparkle'), h('span', { text: `Appliquer mon vocabulaire (${vocab.length})` })),
+          last && last.reason === 'correction' ? h('button', { class: 'btn', text: 'Annuler la dernière correction', onclick: async () => { close(); toast((await applyChange(last.text, 'rétablissement', 'avant correction')) ? 'Correction annulée' : 'Annulation impossible'); } }) : null,
           h('button', { class: 'btn', text: 'Fermer', onclick: close })));
     } });
     return h('div', {},
@@ -310,9 +373,8 @@ export async function ficheView({ params, query }) {
         h('button', { class: 'btn small primary', onclick: paste }, icon('clipboard'), h('span', { text: 'Coller' })),
         h('button', { class: 'btn small', onclick: imp }, icon('upload'), h('span', { text: 'Importer' })),
         h('button', { class: 'btn small', onclick: fix }, icon('edit'), h('span', { text: 'Corriger' }))),
-      h('div', { style: { height: '12px' } }), ta, stats);
+      histBtn, h('div', { style: { height: '12px' } }), ta, stats);
   }
-
   // ----- onglet Compte rendu -----
   function mergeSections(existing, tpl) {
     const used = new Set();
@@ -389,10 +451,21 @@ export async function ficheView({ params, query }) {
         h('button', { class: 'btn primary', style: { marginTop: '10px' }, onclick: mailSheet }, icon('share'), h('span', { text: 'Envoyer par mail' })));
     }
     renderBody();
-    return h('div', {}, h('label', { class: 'lbl', style: { marginTop: 0 }, text: 'Trame' }), tplSel, h('div', { style: { height: '14px' } }), ia, h('div', { style: { height: '16px' } }), box);
+    const prevRep = e.reportHistory[0];
+    const restoreBtn = prevRep ? h('button', { class: 'btn small', style: { marginBottom: '12px' }, onclick: async () => {
+      if (!(await confirmDialog({ title: 'Rétablir le compte rendu précédent ?', message: 'Le compte rendu actuel sera remplacé par celui d\'avant la dernière rédaction par IA (du ' + fmtDateTime(prevRep.date) + ').', confirmLabel: 'Rétablir' }))) return;
+      try {
+        const restored = JSON.parse(prevRep.text);
+        e.reportHistory = S.pushHistory(e.reportHistory.slice(1), { text: JSON.stringify(e.reportSections || []), reason: 'avant rétablissement' });
+        e.reportSections = restored; await S.saveEntretien(e); toast('Compte rendu précédent rétabli'); renderBody();
+      } catch { toast('Rétablissement impossible.'); }
+    } }, icon('back'), h('span', { text: 'Rétablir le compte rendu d\'avant la dernière rédaction IA' })) : null;
+    return h('div', {}, h('label', { class: 'lbl', style: { marginTop: 0 }, text: 'Trame' }), tplSel, h('div', { style: { height: '14px' } }), ia, restoreBtn,  h('div', { style: { height: '16px' } }), box);
   }
 
   // ----- onglet Infos -----
+  // Le titre suit « Nom — Sujet — date » tant qu'il n'a pas été modifié à la main (anciennes fiches : jamais touchées)
+  const syncTitle = () => { if (e.titleAuto) { e.title = S.composeTitle(e.category, e.who, e.subject, e.date); titleInp.value = e.title; fitTitle(); } };
   function infosTab() {
     const catBox = h('div', { class: 'catpick' });
     const folderBtn = h('button', { class: 'pickrow' }, h('span', {}), icon('chevron'));
@@ -404,16 +477,23 @@ export async function ficheView({ params, query }) {
     });
     function renderCats() {
       catBox.textContent = '';
-      for (const c of CATEGORIES) catBox.append(h('button', { class: e.category === c.id ? 'on' : '', onclick: () => { if (e.category !== c.id) { e.category = c.id; e.folderId = null; edit(); upd(); renderCats(); } } },
+      for (const c of CATEGORIES) catBox.append(h('button', { class: e.category === c.id ? 'on' : '', onclick: () => { if (e.category !== c.id) { e.category = c.id; e.folderId = null; syncTitle(); edit(); upd(); renderCats(); renderBody(); } } },
         h('div', { class: 'tile', style: { width: '40px', height: '40px' } }, catIcon(c.id)), h('span', { style: { fontWeight: 600, color: 'var(--ink)' }, text: c.label })));
     }
     renderCats(); upd();
     const dateInp = h('input', { class: 'field', type: 'datetime-local', value: toLocalInput(e.date), 'aria-label': 'Date' });
-    dateInp.addEventListener('change', () => { e.date = fromLocalInput(dateInp.value); edit(); upd(); });
+    dateInp.addEventListener('change', () => { e.date = fromLocalInput(dateInp.value); syncTitle(); edit(); upd(); });
+    const ci = catInfo(e.category) || {};
+    const whoInp = h('input', { class: 'field', type: 'text', maxlength: '80', value: e.who, placeholder: ci.whoHint || '', 'aria-label': ci.whoLabel || 'Nom' });
+    const subjInp = h('input', { class: 'field', type: 'text', maxlength: '100', value: e.subject, placeholder: ci.subjectHint || '', 'aria-label': ci.subjectLabel || 'Sujet' });
+    whoInp.addEventListener('input', () => { e.who = whoInp.value; syncTitle(); edit(); });
+    subjInp.addEventListener('input', () => { e.subject = subjInp.value; syncTitle(); edit(); });
+    const autoBtn = h('button', { class: 'btn small', style: { marginTop: '8px' }, onclick: () => { e.titleAuto = true; syncTitle(); edit(); toast('Titre recomposé automatiquement'); renderBody(); } }, icon('sparkle'), h('span', { text: e.titleAuto ? 'Le titre suit ces informations' : 'Recomposer le titre avec ces informations' }));
     const srcLabel = { texte: 'Texte collé ou importé', micro: 'Enregistrement (laboratoire)', import: 'Audio importé (laboratoire)' }[e.source] || 'Texte';
     const kv = (k, v) => h('div', { class: 'kv' }, h('span', { text: k }), h('span', { text: v }));
     return h('div', {},
       h('label', { class: 'lbl', style: { marginTop: 0 }, text: 'Catégorie' }), catBox,
+      h('label', { class: 'lbl', text: ci.whoLabel || 'Nom' }), whoInp, h('label', { class: 'lbl', text: ci.subjectLabel || 'Sujet' }), subjInp, autoBtn,
       h('label', { class: 'lbl', text: 'Dossier' }), folderBtn,
       h('label', { class: 'lbl', text: 'Date de l\'entretien' }), dateInp,
       h('div', { class: 'card', style: { marginTop: '18px' } }, h('div', { class: 'info-grid' },
