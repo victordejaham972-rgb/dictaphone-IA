@@ -31,6 +31,24 @@ export const DEFAULT_TEMPLATES = [
     ],
   },
   {
+    id: 'tpl-clients-detail', category: 'clients', name: 'Entretien client — bilan détaillé', builtin: true, isDefault: false,
+    sections: [
+      sec('Contexte du rendez-vous', 'Date, participants, motif et cadre de l\'échange.'),
+      sec('Situation familiale et professionnelle', 'Famille (conjoint, enfants), profession, société, statut. Ne retenir que ce qui a été dit.'),
+      sec('Revenus et charges', 'Revenus (salaires, dividendes, loyers) et charges (crédits, impôts, frais), avec les montants.'),
+      sec('Patrimoine immobilier', 'Biens immobiliers (résidences, locatif, SCI) avec valeurs, crédits restants et loyers.'),
+      sec('Épargne et placements financiers', 'Assurance-vie, PEA, PER, SCPI, livrets et comptes, avec les montants.'),
+      sec('Fiscalité et transmission', 'Tranche d\'imposition, IFI, dispositifs évoqués, projets de donation ou de transmission.'),
+      sec('Objectifs du client', 'Objectifs et priorités exprimés, avec les échéances éventuelles.'),
+      sec('Produits et solutions évoqués', 'Pistes et stratégies mentionnées. Distinguer ce qui est envisagé de ce qui est décidé.'),
+      sec('Décisions prises', 'Uniquement les décisions explicitement validées. Une hypothèse n\'est pas une décision.'),
+      sec('Documents à récupérer', 'Pièces à fournir ou à demander, avec l\'échéance.'),
+      sec('Actions à réaliser', 'Action, responsable, échéance.'),
+      sec('Points de vigilance', 'Risques, réserves, informations manquantes, incertaines ou contradictoires.'),
+      sec('Prochaines étapes', 'Prochain rendez-vous et suites prévues.'),
+    ],
+  },
+  {
     id: 'tpl-webinaires', category: 'webinaires', name: 'Webinaire', builtin: true, isDefault: true,
     sections: [
       sec('Sujet du webinaire', 'Titre, organisateur, date.'),

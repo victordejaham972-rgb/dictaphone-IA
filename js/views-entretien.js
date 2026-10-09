@@ -6,6 +6,8 @@ import { go, topbar, pickFolder } from './common.js';
 import { fmtDate, fmtDateTime, reportText, transcriptText, copyText, downloadText, downloadBlob, shareOrDownload, printReport, safeName, metaLine, docPdfFile, validEmail, splitAddresses, mailtoHref, openMailto } from './exports.js';
 import { AI_STATUS_TEXT } from './ai.js';
 import { usableModel } from './ia-local.js';
+import { engineSettings } from './ia-engine.js';
+import { assistReport } from './assist.js';
 import { buildWavBlob } from '../audio.js';
 import { cleanText, pickFile, readImport, previewImport, words as wordsOf } from './import.js';
 
@@ -467,36 +469,92 @@ export async function ficheView({ params, query }) {
       e.templateId = t.id; e.reportSections = mergeSections(sections(), t); edit(); renderBody();
     });
 
-    // L'IA n'est PAS simulée : elle n'est proposée que si un modèle a réussi le test de qualité sur cet appareil et a été activé.
-    const um = usableModel();
-    const ia = um
-      ? h('div', { class: 'card ia-card' },
-        h('div', { class: 'rt serif', style: { fontSize: '19px', color: 'var(--ink)' } }, h('span', { text: 'Rédaction par IA locale' }), h('span', { class: 'badge', text: 'Expérimental' })),
-        h('p', { class: 'hint', text: `Modèle ${um.label}, validé sur cet appareil. La transcription reste sur l'appareil. Le résultat est un brouillon à relire.` }),
-        h('button', { class: 'btn small primary', disabled: !S.hasTranscript(e), onclick: async () => { await saver.flush(); location.href = 'ia.html?e=' + e.id; } }, icon('sparkle'), h('span', { text: 'Rédiger avec l\'IA locale' })),
-        S.hasTranscript(e) ? null : h('p', { class: 'hint', text: 'Ajoutez d\'abord la transcription.' }))
-      : h('div', { class: 'card ia-card' },
-        h('div', { class: 'rt serif', style: { fontSize: '19px', color: 'var(--ink)' } }, h('span', { text: 'Rédaction automatique' }), h('span', { class: 'badge', text: 'Non disponible' })),
-        h('p', { class: 'hint', text: 'Non activée sur cet appareil. Le compte rendu se rédige à la main, rubrique par rubrique.' }),
-        h('a', { class: 'btn small', href: '#/reglages' }, icon('gear'), h('span', { text: 'Réglages de l\'IA' })));
+    // ----- rédaction par l'IA (moteur local) : jamais simulée, toujours à relire -----
+    const eng = engineSettings();
+    const um = eng.kind === 'webgpu' ? usableModel() : null;
+    const ready = eng.kind === 'server' || !!um;
+    const hasT = S.hasTranscript(e);
+    const ia = h('div', { class: 'card ia-card' },
+      h('div', { class: 'rt serif', style: { fontSize: '20px', color: 'var(--ink)' } }, h('span', { text: 'Rédaction par l\'IA' }), h('span', { class: 'badge', text: ready ? 'Locale' : 'Non configurée' })),
+      h('p', { class: 'hint', text: ready
+        ? (eng.kind === 'server' ? `Moteur sur cet ordinateur${eng.model ? ' · ' + eng.model : ''}. La transcription ne quitte pas l'ordinateur ; le résultat est un brouillon relié à la transcription, à relire.` : `Moteur du navigateur · ${um.label}. La transcription reste sur l'appareil ; le résultat est un brouillon à relire.`)
+        : 'Aucune IA n\'est configurée sur cet appareil. Sur PC : un moteur local gratuit (voir les Réglages). Sur iPhone : l\'assistant ci-dessous classe les passages de la transcription par rubrique, sans IA.' }),
+      h('div', { style: { display: 'grid', gap: '8px' } },
+        ready ? h('button', { class: 'btn primary', disabled: !hasT, onclick: async () => { await saver.flush(); location.href = 'ia.html?e=' + e.id; } }, icon('sparkle'), h('span', { text: 'Générer avec l\'IA' }))
+          : h('a', { class: 'btn primary', href: '#/reglages?open=ia' }, icon('gear'), h('span', { text: 'Configurer l\'IA' })),
+        h('button', { class: 'btn', disabled: !hasT, onclick: () => assistSheet() }, icon('edit'), h('span', { text: 'Assistant de structuration (sans IA)' }))),
+      hasT ? null : h('p', { class: 'hint', text: 'Ajoutez d\'abord la transcription.' }));
+
+    // Assistant sans IA : propose les phrases de la transcription classées par rubrique ; l'utilisateur coche ce qu'il garde.
+    function assistSheet() {
+      const tp = templates.find((x) => x.id === e.templateId);
+      if (!tp) return toast('Choisissez d\'abord une trame.', 3500);
+      const res = assistReport(tp, S.applyVocab(S.transcriptOf(e), S.getVocab()).text);
+      const picks = [];
+      sheet({ title: 'Assistant de structuration', wide: true, build(body, close) {
+        body.append(h('p', { class: 'hint', style: { marginTop: 0 }, text: `Sans IA : ${res.stats.kept} phrase${res.stats.kept > 1 ? 's' : ''} de la transcription classée${res.stats.kept > 1 ? 's' : ''} par rubrique, recopiée${res.stats.kept > 1 ? 's' : ''} telles quelles. Décochez ce que vous ne voulez pas garder ; rien n'est inventé.` }));
+        for (const sec of res.sections) {
+          if (!sec.items.length) continue;
+          body.append(h('div', { class: 'rt serif', style: { fontSize: '20px', color: 'var(--marine)', margin: '14px 0 4px' }, text: sec.title }));
+          sec.items.forEach((it, i) => {
+            const chk = h('input', { type: 'checkbox', checked: true });
+            picks.push({ sec, it, chk, ev: sec.evidence[i] });
+            body.append(h('label', { class: 'check' }, chk, h('span', { text: it.text })));
+          });
+        }
+        body.append(h('div', { class: 'sheet-actions' },
+          h('button', { class: 'btn primary', onclick: () => {
+            const chosen = picks.filter((p) => p.chk.checked);
+            if (!chosen.length) return toast('Rien n\'est coché.');
+            if (S.hasReport(e)) e.reportHistory = S.pushHistory(e.reportHistory, { text: JSON.stringify(e.reportSections || []), reason: 'avant assistant' });
+            for (const p of chosen) {
+              const s = (e.reportSections || []).find((x) => x.title.trim().toLowerCase() === p.sec.title.trim().toLowerCase());
+              if (!s) continue;
+              s.content = (s.content || '').trim() ? s.content.replace(/\s+$/, '') + '\n- ' + p.it.text : '- ' + p.it.text;
+              s.evidence = [...(s.evidence || []), p.ev];
+            }
+            edit(); close(); renderBody(); toast(`${chosen.length} ligne${chosen.length > 1 ? 's' : ''} ajoutée${chosen.length > 1 ? 's' : ''} au compte rendu`, 4000);
+          } }, icon('check'), h('span', { text: 'Ajouter la sélection' })),
+          h('button', { class: 'btn', text: 'Annuler', onclick: close })));
+      } });
+    }
+
+    const KIND_LABEL = { 'à confirmer': 'À confirmer', 'à vérifier': 'À vérifier', contradiction: 'Contradiction', 'sans source': 'Sans source dans la transcription', corrigé: 'Corrigé' };
+    const flagsBlock = (s) => (s.flags && s.flags.length ? h('div', { class: 'rflags' }, s.flags.slice(0, 8).map((f) => h('div', { class: 'rflag' }, icon('info'), h('span', {}, h('b', { text: (KIND_LABEL[f.kind] || f.kind) + ' : ' }), f.text)))) : null);
+    const evidenceBlock = (s) => (s.evidence && s.evidence.length ? h('details', { class: 'evid' }, h('summary', { text: `Passages justificatifs (${s.evidence.length})` }),
+      s.evidence.map((ev) => h('div', { class: 'ev' }, h('div', { class: 'ev-t', text: ev.t }), (ev.q || []).map((q) => h('blockquote', { text: '« ' + q + ' »' }))))) : null);
+
+    function reviewBanner() {
+      const info = e.iaInfo;
+      if (!info) return null;
+      if (info.reviewed) return h('div', { class: 'note' }, icon('check'), h('span', { text: `Généré avec l'IA, relu le ${fmtDateTime(info.reviewedAt || Date.now())}` }), h('button', { text: 'Annuler', onclick: () => { info.reviewed = false; delete info.reviewedAt; edit(); renderBody(); } }));
+      return h('div', { class: 'banner warn', style: { marginTop: '0' } }, icon('info'), h('div', {},
+        h('div', { style: { fontWeight: 600 }, text: 'Brouillon généré par l\'IA : relecture obligatoire' }),
+        h('div', { class: 'hint', style: { margin: '4px 0 8px' }, text: `${info.label || 'IA locale'} · ${fmtDateTime(info.date)}. Vérifiez chaque rubrique, ses passages justificatifs et les points signalés avant tout usage professionnel.` }),
+        (info.flags && info.flags.length) ? h('ul', { class: 'plain' }, info.flags.slice(0, 6).map((f) => h('li', { text: f.text }))) : null,
+        h('button', { class: 'btn small primary', onclick: () => { info.reviewed = true; info.reviewedAt = Date.now(); edit(); renderBody(); toast('Compte rendu marqué comme relu'); } }, icon('check'), h('span', { text: 'J\'ai relu ce compte rendu' }))));
+    }
 
     function renderBody() {
       box.textContent = '';
       const list = e.reportSections || [];
       const tp = templates.find((t) => t.id === e.templateId);
       if (!e.templateId && !list.length) box.append(empty('Choisissez une trame', 'La trame définit les rubriques de votre compte rendu.'));
+      const rb = reviewBanner(); if (rb) box.append(rb, h('div', { style: { height: '12px' } }));
       for (const s of list) {
         const ta = h('textarea', { class: 'textarea', 'aria-label': s.title, rows: '3', placeholder: 'À rédiger…' });
         ta.value = s.content || '';
-        ta.addEventListener('input', () => { s.content = ta.value; edit(); });
+        const pill = s.ia ? h('span', { class: 'pill todo', text: 'IA · à relire' }) : null;
+        ta.addEventListener('input', () => { s.content = ta.value; if (s.ia && pill) { s.edited = true; pill.textContent = 'IA · modifié'; } edit(); });
         const hint = tp && (tp.sections.find((x) => x.title.trim().toLowerCase() === s.title.trim().toLowerCase()) || {}).instruction;
+        if (s.ia && s.edited && pill) pill.textContent = 'IA · modifié';
         box.append(h('div', { class: 'rsec' },
-          h('div', { class: 'rsec-head' }, h('div', { class: 'rt', text: s.title }),
+          h('div', { class: 'rsec-head' }, h('div', { class: 'rt', text: s.title }), pill,
             h('button', { class: 'iconbtn', 'aria-label': 'Supprimer la rubrique', style: { color: 'var(--muted)', width: '36px', height: '36px' }, onclick: async () => {
               if ((s.content || '').trim() && !(await confirmDialog({ title: 'Supprimer cette rubrique ?', message: 'Le texte qu\'elle contient sera perdu.', danger: true, confirmLabel: 'Supprimer' }))) return;
               e.reportSections = list.filter((x) => x !== s); edit(); renderBody();
             } }, icon('trash'))),
-          hint ? h('p', { class: 'consigne', text: hint }) : null, ta));
+          hint ? h('p', { class: 'consigne', text: hint }) : null, ta, flagsBlock(s), evidenceBlock(s)));
         autosize(ta);
       }
       if (e.templateId || list.length) box.append(h('button', { class: 'btn small', style: { marginBottom: '12px' }, onclick: async () => {
@@ -506,7 +564,7 @@ export async function ficheView({ params, query }) {
       /* Copier, exporter et envoyer par mail : menu « Partager » en haut de la fiche */
     }
     renderBody();
-    const prevRep = e.reportHistory[0];
+    if (query.assist) setTimeout(() => { query.assist = ''; assistSheet(); }, 500);    const prevRep = e.reportHistory[0];
     const restoreBtn = prevRep ? h('button', { class: 'btn small', style: { marginBottom: '12px' }, onclick: async () => {
       if (!(await confirmDialog({ title: 'Rétablir le compte rendu précédent ?', message: 'Le compte rendu actuel sera remplacé par celui d\'avant la dernière rédaction par IA (du ' + fmtDateTime(prevRep.date) + ').', confirmLabel: 'Rétablir' }))) return;
       try {

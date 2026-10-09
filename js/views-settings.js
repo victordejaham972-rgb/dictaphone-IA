@@ -6,9 +6,8 @@ import { go } from './common.js';
 import { APP_VERSION } from './version.js';
 import * as Up from './update.js';
 import { shareOrDownload } from './exports.js';
-import { AI_STATUS_TEXT } from './ai.js';
-import { modelStatus, localAiSettings, setLocalAi } from './ia-local.js';
 import { vocabAccordion } from './vocab-ui.js';
+import { iaSection } from './ia-ui.js';
 
 const fmtMo = (b) => (b / 1048576).toFixed(b > 1e9 ? 0 : 1) + ' Mo';
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
@@ -93,44 +92,6 @@ export async function settingsView({ query }) {
     } })));
     return h('div', { class: 'card' }, seg, h('p', { class: 'hint', text: 'Clair : ambiance coquille d\'œuf (par défaut). Automatique : suit le mode sombre de l\'appareil. Sombre : fond bleu nuit.' }));
   }
-  // ---------- IA locale ----------
-  // Rien n'est supposé : un modèle n'est proposé que s'il a réussi la sonde IA SUR CET APPAREIL (voir ia-local.js).
-  function aiBlock() {
-    const list = modelStatus(), valid = list.filter((m) => m.validated), st = localAiSettings();
-    const box = h('div', { class: 'card ia-card' });
-    const fmt = (m) => {
-      const p = m.probe;
-      if (!p) return 'Non testé';
-      if (m.validated) return `Validé le ${new Date(p.date || Date.now()).toLocaleDateString('fr-FR')} · rappel ${Math.round(p.recall * 100)} % · classement ${p.placement == null ? '—' : Math.round(p.placement * 100) + ' %'}`;
-      if (p.verdict && p.verdict.startsWith('PLANTAGE')) return 'A fait planter l\'application';
-      if (p.verdict !== 'OK') return 'Échec du test';
-      return `Insuffisant · rappel ${Math.round(p.recall * 100)} %, classement ${p.placement == null ? '—' : Math.round(p.placement * 100) + ' %'}${(p.hallucinatedNumbers || []).length ? ', montants inventés' : ''}${(p.promotedHypotheses || []).length ? ', hypothèse prise pour une décision' : ''}`;
-    };
-    box.append(
-      h('p', { style: { margin: '0 0 8px', color: 'var(--ink)', fontWeight: 600 }, text: valid.length ? 'Rédaction par IA locale : disponible sur cet appareil (expérimental)' : 'Rédaction automatique : non disponible' }),
-      h('p', { class: 'hint', text: valid.length ? 'Un modèle a réussi le test de qualité sur cet appareil. Le résultat reste un brouillon à relire.' : AI_STATUS_TEXT }),
-      h('p', { style: { margin: '10px 0 4px', fontWeight: 600, color: 'var(--ink)' }, text: 'Modèles testés sur cet appareil' }),
-      h('div', { class: 'info-grid' }, list.map((m) => h('div', { class: 'kv' },
-        h('span', {}, h('span', { text: `${m.label} (${m.mo})` }), h('span', { class: 'hint', style: { display: 'block', margin: '2px 0 0' }, text: 'Licence : ' + (m.licence || '—') + (m.pc ? ' · ordinateur uniquement' : '') })),
-        h('span', { text: fmt(m) })))),
-      h('a', { class: 'btn', style: { marginTop: '12px' }, href: 'ia-sonde.html' }, icon('flask'), h('span', { text: 'Tester l\'IA sur cet appareil' })));
-    if (valid.length) {
-      const sel = h('select', { class: 'field', 'aria-label': 'Modèle', style: { marginTop: '10px' } }, valid.map((m) => h('option', { value: m.id, text: `${m.label} (${m.mo})` })));
-      sel.value = valid.some((m) => m.id === st.modelId) ? st.modelId : valid[0].id;
-      const on = h('input', { type: 'checkbox', checked: st.enabled && valid.some((m) => m.id === st.modelId) });
-      const apply = () => { setLocalAi({ enabled: on.checked, modelId: sel.value }); toast(on.checked ? 'IA locale activée' : 'IA locale désactivée'); };
-      on.addEventListener('change', apply); sel.addEventListener('change', apply);
-      box.append(h('label', { class: 'catpick', style: { marginTop: '12px' } }, h('div', { style: { display: 'flex', gap: '10px', alignItems: 'center', border: '1px solid var(--line)', background: 'var(--surface)', borderRadius: '14px', padding: '12px 14px' } }, on, h('span', { text: 'Activer la rédaction par IA locale (expérimental)' }))), sel);
-    }
-    box.append(
-      h('p', { style: { margin: '14px 0 4px', fontWeight: 600, color: 'var(--ink)' }, text: 'Ce qui reste vrai' }),
-      h('ul', { class: 'plain' },
-        h('li', { text: 'La transcription n\'est jamais envoyée : le modèle s\'exécute sur l\'appareil. Seuls les fichiers du modèle sont téléchargés une fois depuis Internet.' }),
-        h('li', { text: 'Une IA de cette taille peut se tromper : relisez toujours, surtout montants, noms, dates et décisions. L\'application signale les montants absents de la transcription.' }),
-        h('li', { text: 'Sans IA, la rédaction guidée par les trames, les corrections, le PDF et l\'envoi par mail restent disponibles.' })));
-    return box;
-  }
-
   // ---------- Stockage ----------
   const storageBox = h('div', { class: 'card' });
   async function drawStorage() {
@@ -160,7 +121,7 @@ export async function settingsView({ query }) {
       h('div', { class: 'settings-group' }, vocabAccordion()),
       group('Apparence', themeBlock()),
 
-      group('Intelligence artificielle', aiBlock()),
+      h('div', { class: 'settings-group' }, iaSection()),
 
       group('Confidentialité',
         h('div', { class: 'card' }, h('ul', { class: 'plain', style: { marginTop: 0 } },
