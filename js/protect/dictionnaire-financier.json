@@ -1,0 +1,58 @@
+{
+  "version": "brouillon-1",
+  "date": "2026-10-11",
+  "avertissement": "BROUILLON À VÉRIFIER ET COMPLÉTER PAR VOUS. Établi de mémoire (non vérifié sur les registres officiels ORIAS, AMF, Euronext). Les noms changent (fusions, renommages, sorties du CAC 40). Cette liste ne dit PAS qu'un nom doit être conservé : elle indique seulement quels rôles financiers une entreprise PEUT avoir. Le rôle réel est décidé mention par mention d'après le contexte de la phrase (employeur, titre détenu, assureur, société de gestion…).",
+  "regles_de_role": {
+    "employeur_l_emporte": "Un indice d'employeur (travaille chez, salarié de, ingénieur à, mon employeur, dirigeant de…) fait masquer le nom même s'il figure dans cette liste.",
+    "indice_financier": "Un indice financier (actions, titres, ETF, assurance-vie chez, contrat, fonds, géré par, PEA chez, compte chez…) fait conserver le nom.",
+    "sans_indice": "Établissement purement financier sans indice : conservé et signalé. Entreprise à double rôle (cotée, grand employeur) sans indice : masquée et signalée en orange."
+  },
+  "groupes": [
+    { "role": "assureur", "employeurFrequent": false, "noms": ["Afer", "Garance", "Predica", "Sogecap", "Ageas", "Axeria"] },
+    { "role": "assureur", "employeurFrequent": true, "noms": [
+      "Generali|Generali Vie|Generali Patrimoine", "AXA|AXA France", "Allianz|Allianz Vie", "Cardif|BNP Paribas Cardif", "CNP Assurances|CNP", "Spirica", "Suravenir", "Apicil|APICIL Assurances",
+      "Swiss Life", "Abeille Assurances|Abeille Vie|Abeille|Aviva", "AG2R La Mondiale|La Mondiale|AG2R", "Groupama|Gan Assurances|Gan", "Predica", "MMA|Covéa|Covea", "MAIF", "Macif", "Matmut",
+      "Sogecap", "Natixis Assurances", "Ageas", "Zurich", "Wealins", "Lombard International", "MetLife", "Utmost", "UAF Life Patrimoine|UAF Patrimoine", "Intencial Patrimoine", "Oradéa Vie|Oradea Vie",
+      "Nortia", "Afi-Esca|Afi Esca", "Skandia", "Prepar-Vie|Prepar Vie", "Allianz Vie", "Mutuelle Générale|MGEN", "Malakoff Humanis", "Harmonie Mutuelle", "Klesia", "Hiscox", "Axéria|Axeria", "Aréas|Areas", "Sopra Steria Assurance"
+    ] },
+    { "role": "banque", "employeurFrequent": true, "noms": [
+      "BNP Paribas|BNP", "Société Générale|Societe Generale|SocGen", "Crédit Agricole|Credit Agricole", "LCL", "Caisse d'Épargne|Caisse d'Epargne", "Banque Populaire", "Crédit Mutuel|Credit Mutuel", "CIC",
+      "La Banque Postale", "HSBC", "Natixis", "Boursorama|BoursoBank|Boursobank", "Fortuneo", "Hello bank", "ING", "Crédit du Nord|Credit du Nord", "Banque Palatine", "Oddo BHF|ODDO BHF",
+      "Rothschild & Co|Rothschild", "Edmond de Rothschild", "Lazard", "UBS", "Julius Baer", "Pictet", "Barclays", "Deutsche Bank", "Santander", "Trade Republic", "Revolut", "Degiro", "Interactive Brokers",
+      "Saxo Banque|Saxo", "Bourse Direct|Bourse Direct", "Arkéa|Arkea", "Banque Transatlantique", "Neuflize OBC", "Crédit Foncier|Credit Foncier", "Banque de France", "BPCE", "Crédit Coopératif", "Banque Delubac",
+      "Banque Hottinguer|Hottinguer", "Banque de Luxembourg", "Banque CIC Private", "CACEIS", "Société Générale Private Banking", "BNP Paribas Wealth Management", "Crédit Agricole Indosuez|Indosuez", "Lombard Odier", "Julius Baer"
+    ] },
+    { "role": "gestionnaire", "employeurFrequent": false, "noms": [
+      "Amundi|Amundi Asset Management", "BNP Paribas Asset Management|BNPP AM", "AXA Investment Managers|AXA IM", "Natixis Investment Managers", "Carmignac", "Comgest", "Lazard Frères Gestion|Lazard Freres Gestion",
+      "Edmond de Rothschild Asset Management", "Oddo BHF Asset Management", "Sycomore|Sycomore AM", "Moneta|Moneta Asset Management", "Tikehau Capital|Tikehau", "Eurazeo", "Candriam", "Mirova", "La Française|La Francaise",
+      "Groupama Asset Management|Groupama AM", "CPR Asset Management|CPR AM", "Covéa Finance|Covea Finance", "Ostrum", "Meeschaert", "Financière de l'Échiquier|Financiere de l'Echiquier|Échiquier|Echiquier", "DNCA",
+      "Dorval", "Montpensier Finance", "Mandarine Gestion", "Varenne Capital", "Fidelity", "BlackRock|iShares", "Vanguard", "Lyxor", "Invesco", "JPMorgan Asset Management|JP Morgan AM", "Schroders", "PIMCO|Pimco",
+      "Franklin Templeton", "Robeco", "Capital Group", "T. Rowe Price", "Morgan Stanley Investment Management", "State Street|SPDR", "Xtrackers|DWS", "UBS Asset Management", "Allianz Global Investors",
+      "Generali Investments", "Swiss Life Asset Managers", "Ofi Invest|OFI Invest", "Altaroc", "Apicil Asset Management", "Primonial", "Corum|Corum Asset Management", "Sofidy", "Perial", "Paref", "Atland Voisin|Voisin",
+      "Remake Asset Management|Remake", "Iroko", "Praemia REIM|Praemia", "Swiss Life REIM", "Amundi Immobilier", "BNP Paribas REIM", "La Financière Tiepolo|Tiepolo", "Ecofi", "Rothschild & Co Asset Management",
+      "Edmond de Rothschild AM", "Pictet Asset Management", "Gestion Privée|Gestion privée"
+    ] },
+    { "role": "fonds_produit", "employeurFrequent": false, "noms": [
+      "Carmignac Patrimoine", "Carmignac Investissement", "Carmignac Sécurité|Carmignac Securite", "Échiquier Agressor|Echiquier Agressor", "Échiquier Major|Echiquier Major", "Comgest Monde", "Amundi MSCI World|Amundi MSCI World UCITS ETF",
+      "Amundi CAC 40", "Lyxor CAC 40", "iShares Core MSCI World", "Vanguard FTSE All-World", "Sycomore Sélection Responsable|Sycomore Selection Responsable", "Eurossima", "Netissima", "Opcimmo", "Primovie", "Corum Origin",
+      "Corum XL", "Pierval Santé|Pierval Sante", "Sofidy Pierre Europe", "Épargne Pierre|Epargne Pierre", "Immorente", "Cristal Life", "Fonds euros|Fonds en euros", "Unités de compte|unites de compte", "Livret A", "LDDS",
+      "LEP", "PEL", "PEA", "PEA-PME", "PER", "PERP", "Madelin", "Assurance-vie|assurance vie", "Contrat de capitalisation", "SCPI", "OPCI", "SICAV", "FCPR", "FIP", "FCPI", "ETF", "OPCVM", "Euro Stoxx 50", "CAC 40", "S&P 500|S&P500",
+      "MSCI World", "Nasdaq", "Dow Jones", "Bitcoin", "Ethereum"
+    ] },
+    { "role": "courtier_plateforme", "employeurFrequent": false, "noms": [
+      "Linxea", "Placement-direct|Placement direct", "Yomoni", "Nalo", "Finary", "Goodvest", "Ramify", "Meilleurtaux Placement", "Cap Finance", "Hedios", "Mon Petit Placement", "Bourse Direct", "Fundshop", "Vie Plus|Vie-Plus",
+      "Altaprofits", "Anaxago", "Wiseed", "Fundimmo", "Homunity", "Lita.co|Lita", "Clubfunding", "Tudigo", "Opale Capital"
+    ] },
+    { "role": "emetteur_cote", "employeurFrequent": true, "avertissement_composition": "Composition du CAC 40 et du SBF 120 à vérifier et à tenir à jour.", "noms": [
+      "Air Liquide", "Airbus", "ArcelorMittal", "Bouygues", "Bureau Veritas", "Capgemini", "Carrefour", "Danone", "Dassault Systèmes|Dassault Systemes", "Dassault Aviation", "Engie", "EssilorLuxottica",
+      "Eurofins Scientific|Eurofins", "Hermès|Hermes", "Kering", "L'Oréal|L'Oreal", "Legrand", "LVMH|Louis Vuitton Moët Hennessy", "Michelin", "Orange", "Pernod Ricard", "Publicis", "Renault", "Safran", "Saint-Gobain|Saint Gobain",
+      "Sanofi", "Schneider Electric", "Stellantis|PSA|Peugeot", "STMicroelectronics", "Teleperformance", "Thales", "TotalEnergies|Total|Total Energies", "Unibail-Rodamco-Westfield|Unibail", "Veolia", "Vinci", "Worldline",
+      "Alstom", "Edenred", "Vivendi", "Sodexo", "Accor", "Atos", "Casino", "Air France-KLM|Air France", "EDF", "Ubisoft", "Valeo", "Faurecia|Forvia", "Arkema", "Eiffage", "Gecina", "Klépierre|Klepierre", "Bic|BIC",
+      "Rémy Cointreau|Remy Cointreau", "SEB", "Somfy", "Sartorius Stedim", "bioMérieux|bioMerieux", "Ipsen", "Elis", "JCDecaux", "Ipsos", "Nexans", "Rexel", "Spie", "Technip Energies", "TF1", "Alten", "Sopra Steria",
+      "Apple", "Microsoft", "Amazon", "Alphabet|Google", "Meta|Facebook", "Tesla", "Nvidia", "Netflix", "Nestlé|Nestle", "Novartis", "Roche", "SAP", "Siemens", "ASML", "Shell", "BP", "Volkswagen", "BMW", "Mercedes-Benz|Mercedes",
+      "Ferrari", "Adidas", "Allianz SE", "Inditex", "Unilever", "Diageo", "LVMH Moët Hennessy"
+    ] }
+  ],
+  "indices_employeur": ["travaille chez", "travaille à", "travaille pour", "salarié de", "salariée de", "employé de", "employée de", "employé par", "employée par", "embauché chez", "embauchée chez", "ingénieur chez", "ingénieure chez", "cadre chez", "directeur chez", "directrice chez", "responsable chez", "recruté par", "mon employeur", "son employeur", "son entreprise", "sa société", "dirigeant de", "dirigeante de", "gérant de", "gérante de", "fondateur de", "fondatrice de", "associé de", "associée de", "président de", "présidente de", "PDG de", "ancien salarié de", "ancienne salariée de", "retraité de", "retraitée de", "licencié de", "licenciée de", "stock-options de", "actions gratuites de son employeur"],
+  "indices_financiers": ["actions", "titres", "obligations", "ETF", "tracker", "détient", "possède des actions", "investit dans", "investi dans", "ligne de", "position sur", "portefeuille", "PEA", "compte-titres", "assurance-vie chez", "assurance vie chez", "contrat chez", "contrat de", "souscrit chez", "fonds", "SICAV", "SCPI", "géré par", "gérée par", "société de gestion", "compte chez", "livret chez", "banque", "courtier", "dividende", "coupon", "valorisation", "cours de"]
+}

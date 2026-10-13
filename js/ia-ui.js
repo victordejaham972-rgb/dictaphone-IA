@@ -61,7 +61,7 @@ export function iaSection() {
     const bar = h('progress', { max: '1', value: '0', style: { width: '100%' } });
     const closeBtn = h('button', { class: 'btn', text: 'Fermer' });
     let stop = false;
-    const sh = sheet({ title: 'Essai du moteur', build(b, close) { closeBtn.addEventListener('click', () => { stop = true; close(); }); b.append(h('p', { class: 'hint', style: { marginTop: 0 }, text: `Modèle : ${model}. Transcription fictive de ${DEMO_TRANSCRIPT.split(/\s+/).length} mots, trame « ${template.name} ». Rien n'est enregistré.` }), bar, msg, out, h('div', { class: 'sheet-actions' }, closeBtn)); } });
+    const sh = sheet({ title: 'Essai du moteur', build(b, close) { closeBtn.addEventListener('click', () => { stop = true; close(); }); b.append(h('p', { class: 'hint', style: { marginTop: 0 }, text: `Modèle : ${shortModel(model)}. Transcription fictive de ${DEMO_TRANSCRIPT.split(/\s+/).length} mots, trame « ${template.name} ». Rien n'est enregistré.` }), bar, msg, out, h('div', { class: 'sheet-actions' }, closeBtn)); } });
     try {
       const chat = serverChat({ url: r.url, model, flavor: r.flavor });
       const res = await generateReportV2({ chat, template, transcript: DEMO_TRANSCRIPT, rewrite: 'off', maxChars: 1000, shouldStop: () => stop, onProgress: (p) => { bar.value = p.i / p.n; msg.textContent = `${p.step === 'analyse' ? 'Analyse' : p.step === 'classement' ? 'Classement' : 'Rédaction'} (${p.i}/${p.n})`; } });
@@ -123,7 +123,7 @@ export function iaSection() {
   drawSel(); refreshSub(); sync();
 
   body.append(
-    h('p', { class: 'hint', style: { marginTop: 0 }, text: 'Dictaphone IA rédige le compte rendu à partir de la transcription et de la trame choisie. Tout reste sur votre appareil : aucune transcription n\'est envoyée sur Internet, aucun abonnement, aucun coût.' }),
+    h('p', { class: 'hint', style: { marginTop: 0 }, text: 'ADE-CI Notes rédige le compte rendu à partir de la transcription et de la trame choisie. Tout reste sur votre appareil : aucune transcription n\'est envoyée sur Internet, aucun abonnement, aucun coût.' }),
     selBox, panel,
     h('p', { style: { margin: '16px 0 4px', fontWeight: 600, color: 'var(--ink)' }, text: 'Ce qui reste vrai' }),
     h('ul', { class: 'plain' },

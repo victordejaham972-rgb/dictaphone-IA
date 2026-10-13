@@ -8,6 +8,7 @@ import { newView, ficheView } from './views-entretien.js';
 import { templatesView, templateEditView } from './views-templates.js';
 import { settingsView } from './views-settings.js';
 import { startUpdateWatcher, forceUpdate } from './update.js';
+import * as V from './vault.js';
 
 const routes = [
   [/^\/?$/, homeView, 'home'],
@@ -17,12 +18,13 @@ const routes = [
   [/^\/trames$/, templatesView, 'templates'],
   [/^\/trame\/([\w-]+)$/, templateEditView, 'templates'],
   [/^\/reglages$/, settingsView, 'settings'],
+  [/^\/corbeille$/, async (a) => (await import('./trash-ui.js')).trashView(a), 'settings'],
 ];
 
 const app = document.getElementById('app');
 const tabbar = document.getElementById('tabbar');
 const TABS = [
-  ['home', '#/', 'home', 'Accueil'], ['library', '#/bibliotheque', 'folder', 'Bibliothèque'], ['new', '#/nouveau', 'plus', 'Nouvel entretien'],
+  ['home', '#/', 'home', 'Accueil'], ['library', '#/bibliotheque', 'folder', 'Bibliothèque'], ['new', '#/nouveau', 'plus', 'Importer une transcription'],
   ['templates', '#/trames', 'template', 'Trames'], ['settings', '#/reglages', 'gear', 'Réglages'],
 ];
 const tabEls = {};
@@ -34,7 +36,7 @@ for (const [id, href, ic, label] of TABS) {
 }
 // Ordinateur : la barre du bas devient un menu à gauche, avec la marque et le rappel de sauvegarde
 const tabWrap = tabbar.parentElement;
-tabWrap.prepend(h('div', { class: 'side-brand' }, h('img', { src: 'img/emblem-tile.png', alt: '', width: 44, height: 44 }), h('div', {}, h('div', { class: 'name', text: 'Dictaphone IA' }), h('div', { class: 'sub', text: 'Ade-ci Family Office' }))));
+tabWrap.prepend(h('div', { class: 'side-brand' }, h('img', { src: 'img/emblem-tile.png', alt: '', width: 44, height: 44 }), h('div', {}, h('div', { class: 'name', text: 'ADE-CI Notes' }), h('div', { class: 'sub', text: 'Ade-ci Family Office' }))));
 const sideFoot = h('div', { class: 'side-foot' });
 tabWrap.append(sideFoot);
 const refreshFoot = () => { const last = lastBackupAt(); sideFoot.replaceChildren(icon('shield'), h('br'), last ? 'Dernière sauvegarde' : 'Aucune sauvegarde', last ? h('b', { text: backupAgo(last) }) : h('b', { text: 'à faire dans Réglages' })); };
@@ -78,6 +80,7 @@ function slowNotice() {
 // Ordinateur large : la liste des entretiens reste affichée à gauche de la fiche (trois colonnes avec le menu)
 const DESK = window.matchMedia('(min-width: 1000px)');
 async function render() {
+  if (V.state() === 'locked') return;          // rien n'est affiché tant que le coffre est verrouillé
   const my = ++seq;
   if (current && current.dispose) { try { await current.dispose(); } catch {} }
   current = null;
@@ -109,10 +112,38 @@ async function render() {
   refreshFoot();
   window.scrollTo(0, 0);
 }
+// Coffre chiffré : à chaque verrouillage, l'écran est vidé (aucun contenu ne reste dans la page) et l'écran de verrouillage s'affiche.
+let lockShown = false;
+async function showLock({ rerender = true } = {}) {
+  if (lockShown) return;
+  lockShown = true; seq++;
+  if (current && current.dispose) { try { await current.dispose(); } catch {} }
+  current = null;
+  document.querySelectorAll('.overlay, .update-banner').forEach((o) => o.remove());
+  document.body.classList.remove('noscroll');
+  app.replaceChildren();
+  try { const m = await import('./vault-ui.js'); await m.lockScreen(); } finally { lockShown = false; }
+  if (rerender) await render();
+}
+// Menu de gauche (ordinateur) : « Verrouiller » toujours accessible tant que le coffre est actif et déverrouillé ; nom d'espace facultatif
+function mountLockControl() {
+  const bar = document.querySelector('.tabbar'); if (!bar) return;
+  const lab = h('div', { class: 'lock-space' });
+  const btn = h('button', { class: 'btn small', type: 'button', 'aria-label': 'Verrouiller maintenant', onclick: () => V.lock() }, icon('shield'), h('span', { text: 'Verrouiller' }));
+  const box = h('div', { class: 'lock-slot' }, lab, btn);
+  const sync = () => { box.hidden = V.state() !== 'unlocked'; const n = (S.getSettings().spaceName || '').trim().slice(0, 40); lab.textContent = n ? 'Espace : ' + n : ''; lab.hidden = !n; };
+  bar.append(box); sync(); V.onState(sync); window.addEventListener('dia-space', sync);
+}
 DESK.addEventListener('change', () => render());window.addEventListener('hashchange', render);
 window.addEventListener('unhandledrejection', (e) => { console.error('Erreur :', e.reason && e.reason.message); toast('Une erreur est survenue.'); });
 
 (async function start() {
+  try {
+    await V.init();                                                    // l'écoute du verrouillage est branchée après l'initialisation
+    V.onState((st) => { if (st === 'locked') showLock(); });
+    if (V.state() === 'locked') await showLock({ rerender: false });
+  } catch (err) { console.error('Coffre :', err && err.message); }
+  try { mountLockControl(); } catch (err) { console.error('Verrouillage :', err && err.message); }
   try {
     const defaults = S.ensureDefaults();
     defaults.catch(() => {});

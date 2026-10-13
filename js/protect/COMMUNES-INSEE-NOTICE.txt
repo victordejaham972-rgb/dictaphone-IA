@@ -1,0 +1,12 @@
+Liste des communes utilisée par le moteur de pseudonymisation (js/protect/communes-insee.txt)
+
+Source : Insee, « Code officiel géographique (COG) au 1er janvier 2025 », fichier des communes v_commune_2025.csv
+         https://www.insee.fr/fr/information/8377162  (UTF-8, 3,6 Mo)
+Jeu de données : https://www.data.gouv.fr/datasets/code-officiel-geographique-cog  (licence indiquée : Licence Ouverte / Open Licence, Etalab)
+Téléchargé le 12/10/2026, empreinte SHA-256 : 3F8D2913FB0BDEE1F72F54706854DC0CD626ED4089BD5761EC9292DB0CB12E7E
+
+Traitement : communes et arrondissements municipaux (types COM et ARM), noms avec et sans article, mis en minuscules sans accents,
+tirets remplacés par des espaces, noms de moins de 4 caractères exclus. Aucune autre donnée n'est utilisée.
+La liste est utilisée localement, sans envoi de texte à un service extérieur. Un nom de commune n'est retenu que dans un contexte de lieu
+(voir js/protect/engine.js) : « Orange », « Lourdes » ou un nom de famille ne sont pas masqués sans indice.
+Attribution : « Source : Insee, Code officiel géographique, traitement par ADE-CI Notes ».

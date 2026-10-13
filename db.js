@@ -26,7 +26,7 @@ function open() {
       r.result.onversionchange = () => { r.result.close(); dbPromise = null; };
       resolve(r.result);
     };
-    r.onblocked = () => { clearTimeout(guard); reject(new Error('Base verrouillée par un autre onglet : fermez les autres fenêtres Dictaphone IA puis rechargez.')); };
+    r.onblocked = () => { clearTimeout(guard); reject(new Error('Base verrouillée par un autre onglet : fermez les autres fenêtres ADE-CI Notes puis rechargez.')); };
     r.onerror = () => { clearTimeout(guard); reject(r.error); };
   });
 }
@@ -48,25 +48,57 @@ async function tx(store, mode, fn) {
 
 const key = (id, i) => `${id}:${String(i).padStart(5, '0')}`;
 
-export const putSession = (s) => tx('sessions', 'readwrite', (st) => st.put(s));
-export const getSession = (id) => tx('sessions', 'readonly', (st) => st.get(id));
-export const listSessions = () => tx('sessions', 'readonly', (st) => st.getAll());
+// Coffre chiffré (js/vault.js) : lorsqu'il est actif, les fiches, dossiers et fichiers d'origine sont chiffrés à l'écriture et déchiffrés
+// à la lecture. Les enregistrements « en clair » restent lisibles (migration progressive et reprise possible). Les fonctions « raw* »
+// lisent et écrivent les enregistrements tels qu'ils sont stockés (migration, métadonnées du coffre).
+let codec = null;
+export const setCodec = (c) => { codec = c; };
+const enc = (kind, v, id) => (codec ? codec.encode(kind, v, id) : v);
+const dec = async (kind, r, id) => (codec && r ? codec.decode(kind, r, id) : r);
+
+export const rawPutSession = (s) => tx('sessions', 'readwrite', (st) => st.put(s));
+export const rawListSessions = () => tx('sessions', 'readonly', (st) => st.getAll());
+export const rawPutFolder = (f) => tx('folders', 'readwrite', (st) => st.put(f));
+export const rawListFolders = () => tx('folders', 'readonly', (st) => st.getAll());
+export const rawPutOriginal = (id, obj) => tx('originals', 'readwrite', (st) => st.put(obj, id));
+export const rawGetOriginal = (id) => tx('originals', 'readonly', (st) => st.get(id));
+export const rawListOriginalKeys = () => tx('originals', 'readonly', (st) => st.getAllKeys());
+
+// Une fiche chiffrée illisible (donnée corrompue) ne doit pas bloquer la liste : elle est signalée par un marqueur, jamais réécrite.
+const unreadable = (kind, r) => (kind === 'folder'
+  ? { id: r.id, name: 'Dossier illisible', category: 'clients', parentId: null, createdAt: 0, lastOpened: 0, _unreadable: true }
+  : { id: r.id, title: 'Fiche illisible (chiffrement)', name: 'Fiche illisible (chiffrement)', updatedAt: r.updatedAt || 0, date: r.updatedAt || 0, _unreadable: true });
+const decList = (kind, l) => Promise.all(l.map(async (r) => { try { return await dec(kind, r); } catch (err) { if (codec && codec.isLocked && codec.isLocked()) throw err; return unreadable(kind, r); } }));
+const refuse = (s) => { if (s && s._unreadable) throw new Error('Fiche illisible : écriture refusée pour ne pas la perdre.'); };
+
+export const putSession = async (s) => { refuse(s); return rawPutSession(await enc('session', s)); };
+export const getSession = async (id) => dec('session', await tx('sessions', 'readonly', (st) => st.get(id)));
+export const listSessions = async () => { const l = await rawListSessions(); return codec ? decList('session', l) : l; };
 
 // Un morceau = Blob (PCM 16 bits, 16 kHz, mono).
-export const putChunk = (id, i, blob) => tx('chunks', 'readwrite', (st) => st.put(blob, key(id, i)));
+// Audio : chiffré à l'écriture lorsque le coffre est actif (lié à la clé « id:index » du morceau).
+export const rawPutChunk = (k, v) => tx('chunks', 'readwrite', (st) => st.put(v, k));
+export const rawGetChunk = (k) => tx('chunks', 'readonly', (st) => st.get(k));
+export const rawListChunkKeys = () => tx('chunks', 'readonly', (st) => st.getAllKeys());
+export const rawDeleteOriginal = (id) => tx('originals', 'readwrite', (st) => st.delete(id));
+export const putChunk = async (id, i, blob) => { const k = key(id, i); return rawPutChunk(k, await enc('chunk', blob, k)); };
 export async function getChunkBlob(id, i) {
-  const v = await tx('chunks', 'readonly', (st) => st.get(key(id, i)));
+  const k = key(id, i);
+  const v = await rawGetChunk(k);
+  if (v && v._enc && codec) return codec.decode('chunk', v, k);
   return v instanceof Blob ? v : new Blob([v]); // tolère l'ancien format (ArrayBuffer)
 }
+// Retire un morceau écrit par un import interrompu (jamais utilisé pour supprimer un enregistrement existant : l'import refuse d'écraser).
+export const deleteChunk = (id, i) => tx('chunks', 'readwrite', (st) => st.delete(key(id, i)));
 export async function getChunk(id, i) { return (await getChunkBlob(id, i)).arrayBuffer(); }
 
 // Fichier d'origine d'un import (facultatif) : { blob, name, type }.
-export const putOriginal = (id, obj) => tx('originals', 'readwrite', (st) => st.put(obj, id));
-export const getOriginal = (id) => tx('originals', 'readonly', (st) => st.get(id));
+export const putOriginal = async (id, obj) => rawPutOriginal(id, await enc('original', obj, id));
+export const getOriginal = async (id) => dec('original', await rawGetOriginal(id), id);
 
 // Dossiers et trames (nouveaux espaces, version 3)
-export const putFolder = (f) => tx('folders', 'readwrite', (st) => st.put(f));
-export const listFolders = () => tx('folders', 'readonly', (st) => st.getAll());
+export const putFolder = async (f) => { refuse(f); return rawPutFolder(await enc('folder', f)); };
+export const listFolders = async () => { const l = await rawListFolders(); return codec ? decList('folder', l) : l; };
 export const deleteFolderRecord = (id) => tx('folders', 'readwrite', (st) => st.delete(id));
 export const putTemplate = (t) => tx('templates', 'readwrite', (st) => st.put(t));
 export const listTemplates = () => tx('templates', 'readonly', (st) => st.getAll());

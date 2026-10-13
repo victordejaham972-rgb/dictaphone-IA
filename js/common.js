@@ -1,7 +1,7 @@
 // Éléments d'interface partagés entre les écrans.
 import { h, icon, catIcon, sheet, promptDialog } from './ui.js';
 import { CATEGORIES, catLabel, catShort } from './defaults.js';
-import { hasTranscript, hasReport, hasAudio, createFolder } from './store.js';
+import { hasTranscript, hasReport, hasAudio, createFolder, stepOf } from './store.js';
 import { fmtDate } from './exports.js';
 
 export const go = (hash) => { location.hash = hash; };
@@ -15,20 +15,25 @@ export function topbar({ back, backLabel = 'Retour', right }) {
 // Statut d'un entretien : une seule pastille claire (+ « Audio » si un enregistrement existe)
 export function statusPills(e) {
   const pills = [];
-  if (hasAudio(e)) pills.push(h('span', { class: 'pill quiet', text: 'Audio' }));
-  if (hasReport(e)) pills.push(h('span', { class: 'pill', text: 'Rédigé' }));
-  else if (hasTranscript(e)) pills.push(h('span', { class: 'pill todo' }, h('i', { class: 'dot' }), 'À rédiger'));
-  else pills.push(h('span', { class: 'pill quiet', text: 'Sans texte' }));
+  if (hasAudio(e) && !(e.trashed && e.trashed.audio)) pills.push(h('span', { class: 'pill quiet', text: 'Audio' }));
+  // prochaine action du parcours (calculée à partir des données de la fiche)
+  const st = stepOf(e);
+  if (st === 'termine') pills.push(h('span', { class: 'pill', text: 'Terminé' }));
+  else if (st === 'importer') pills.push(h('span', { class: 'pill quiet', text: 'Sans texte' }));
+  else pills.push(h('span', { class: 'pill todo' }, h('i', { class: 'dot' }), { corriger: 'À corriger et protéger', trame: 'Trame à choisir', chatgpt: 'Prêt pour ChatGPT', 'compte-rendu': 'Compte rendu à coller' }[st] || 'À traiter'));
   return h('span', { class: 'pills' }, pills);
 }
 export const statusChips = statusPills;
 
-export function entretienRow(e, { onMore, showCat = true, selected = false } = {}) {
+// select : { has(id), toggle(e) } — mode sélection (cases à cocher) pour agir sur plusieurs fiches à la fois
+export function entretienRow(e, { onMore, showCat = true, selected = false, select = null } = {}) {
   const meta = [new Date(e.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }), showCat ? catShort(e.category) : null].filter(Boolean).join(' · ');
-  return h('div', { class: 'row' + (selected ? ' on' : ''), role: 'link', tabindex: '0', onclick: () => go('#/entretien/' + e.id), onkeydown: (ev) => { if (ev.key === 'Enter') go('#/entretien/' + e.id); } },
+  const open = () => (select ? select.toggle(e) : go('#/entretien/' + e.id));
+  return h('div', { class: 'row' + (selected ? ' on' : ''), role: select ? 'checkbox' : 'link', 'aria-checked': select ? String(select.has(e.id)) : null, tabindex: '0', onclick: open, onkeydown: (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); open(); } } },
+    select ? h('span', { class: 'selbox' + (select.has(e.id) ? ' on' : ''), 'aria-hidden': 'true' }, select.has(e.id) ? icon('check') : null) : null,
     h('div', { class: 'tile' }, e.category ? catIcon(e.category) : icon('doc')),
     h('div', { class: 'grow' }, h('div', { class: 't', text: e.title }), h('div', { class: 'm' }, h('span', { text: meta }), statusPills(e))),
-    onMore ? h('button', { class: 'more', 'aria-label': 'Actions', onclick: (ev) => { ev.stopPropagation(); onMore(e); } }, icon('more')) : null);
+    onMore && !select ? h('button', { class: 'more', 'aria-label': 'Actions', onclick: (ev) => { ev.stopPropagation(); onMore(e); } }, icon('more')) : null);
 }
 // Sélecteur de dossier. Retourne { category, folderId } (folderId null = racine de la catégorie) ou null si annulé.
 export function pickFolder({ categories = CATEGORIES.map((c) => c.id), folders, excludeIds = new Set(), current = null, title = 'Choisir un dossier' }) {

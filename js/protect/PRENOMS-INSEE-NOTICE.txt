@@ -1,0 +1,10 @@
+﻿Liste de prénoms utilisée par le moteur de pseudonymisation (js/protect/prenoms-insee.txt)
+
+Source : Institut national de la statistique et des études économiques (Insee), « Fichier des prénoms depuis 1900 »
+         https://www.insee.fr/fr/statistiques/7633685   (fichier national nat2022_csv.zip, naissances en France de 1900 à 2022)
+Jeu de données : https://www.data.gouv.fr/datasets/fichier-des-prenoms-depuis-1900/  (licence indiquée : Licence Ouverte / Open Licence 2.0, Etalab)
+Téléchargé le 11/10/2026, empreinte SHA-256 du zip : C13B45E770C684B3C8531F28B6E3EAE62194DC6DC86205FA17E4C6447B01B81D
+
+Traitement : somme des naissances par prénom (tous sexes, toutes années), prénoms de 1 000 naissances ou plus conservés (3 194 prénoms),
+mise en minuscules sans accents. Aucune autre donnée du fichier n'est utilisée. La liste est utilisée localement, sans envoi de texte à un service extérieur.
+Attribution : « Source : Insee, fichier des prénoms, traitement par ADE-CI Notes ».

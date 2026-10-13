@@ -10,21 +10,30 @@ export async function templatesView() {
   async function render() {
     const [templates, entretiens] = await Promise.all([S.listTemplates(), S.listEntretiens()]);
     box.textContent = '';
+    const rowOf = (t) => h('div', { class: 'row', role: 'link', tabindex: '0', onclick: () => go('#/trame/' + t.id), onkeydown: (ev) => { if (ev.key === 'Enter') go('#/trame/' + t.id); } },
+      h('div', { class: 'tile' }, icon('template')),
+      h('div', { class: 'grow' }, h('div', { class: 't', text: t.name }),
+        h('div', { class: 'm', text: `${t.sections.length} rubrique${t.sections.length > 1 ? 's' : ''}` }),
+        h('div', { class: 'chips' }, t.isDefault ? h('span', { class: 'chip ok', text: 'Par défaut' }) : null, t.builtin ? h('span', { class: 'chip', text: 'Trame d\'origine' }) : null, S.isTemplateHidden(t.id) ? h('span', { class: 'chip', text: 'Masquée' }) : null)),
+      h('button', { class: 'more', 'aria-label': 'Actions', onclick: (ev) => { ev.stopPropagation(); menu(t, entretiens); } }, icon('more')));
+    const visible = templates.filter((t) => !S.isTemplateHidden(t.id));
     for (const c of CATEGORIES) {
-      const list = templates.filter((t) => t.category === c.id);
+      const list = visible.filter((t) => t.category === c.id);
       box.append(h('div', { class: 'sec-head' }, h('h2', { text: c.label })));
-      if (!list.length) { box.append(h('p', { class: 'hint', text: 'Aucune trame.' })); continue; }
-      box.append(h('div', { class: 'list' }, list.map((t) => h('div', { class: 'row', role: 'link', tabindex: '0', onclick: () => go('#/trame/' + t.id), onkeydown: (ev) => { if (ev.key === 'Enter') go('#/trame/' + t.id); } },
-        h('div', { class: 'tile' }, icon('template')),
-        h('div', { class: 'grow' }, h('div', { class: 't', text: t.name }),
-          h('div', { class: 'm', text: `${t.sections.length} rubrique${t.sections.length > 1 ? 's' : ''}` }),
-          h('div', { class: 'chips' }, t.isDefault ? h('span', { class: 'chip ok', text: 'Par défaut' }) : null, t.builtin ? h('span', { class: 'chip', text: 'Trame d\'origine' }) : null)),
-        h('button', { class: 'more', 'aria-label': 'Actions', onclick: (ev) => { ev.stopPropagation(); menu(t, entretiens); } }, icon('more'))))));
+      if (!list.length) { box.append(h('p', { class: 'hint', text: 'Aucune trame affichée.' })); continue; }
+      box.append(h('div', { class: 'list' }, list.map(rowOf)));
     }
-  }
-  function menu(t, entretiens) {
+    // trames masquées : récupérables à tout moment (rien n'est supprimé ; les fiches qui les utilisent les conservent)
+    const hiddenList = templates.filter((t) => S.isTemplateHidden(t.id));
+    if (hiddenList.length) {
+      box.append(h('details', { class: 'evid', style: { marginTop: '22px' } }, h('summary', { text: `Trames masquées (${hiddenList.length})` }),
+        h('p', { class: 'hint', text: 'Ces trames ne sont plus proposées par défaut, mais elles existent toujours : les anciennes fiches qui les utilisent les conservent. Touchez « ⋯ » puis « Afficher dans la liste » pour les remettre.' }),
+        h('div', { class: 'list' }, hiddenList.map(rowOf))));
+    }
+  }  function menu(t, entretiens) {
     actionSheet({ title: t.name, actions: [
       { label: 'Modifier', icon: 'edit', run: () => go('#/trame/' + t.id) },
+      S.isTemplateHidden(t.id) ? { label: 'Afficher dans la liste', icon: 'up', run: () => { S.setTemplateHidden(t.id, false); toast('Trame affichée'); render(); } } : { label: 'Masquer de la liste', icon: 'archive', run: () => { S.setTemplateHidden(t.id, true); toast('Trame masquée (non supprimée)'); render(); } },
       { label: 'Dupliquer', icon: 'copy', run: async () => { const c = await S.duplicateTemplate(t); toast('Trame dupliquée'); go('#/trame/' + c.id); } },
       t.isDefault ? null : { label: 'Définir comme trame par défaut', icon: 'check', run: async () => { await S.setDefaultTemplate(t.id); toast('Trame par défaut mise à jour'); render(); } },
       t.builtin ? { label: 'Rétablir la trame d\'origine', icon: 'archive', run: async () => {
@@ -78,7 +87,10 @@ export async function templateEditView({ params, query }) {
             if ((s.title || s.instruction) && !(await confirmDialog({ title: 'Supprimer cette rubrique ?', message: `« ${s.title || 'Sans titre'} » sera retirée de la trame.`, danger: true, confirmLabel: 'Supprimer' }))) return;
             t.sections.splice(i, 1); mark(); renderSections();
           } }, icon('trash'))),
-        instr));
+        instr,
+        h('label', { class: 'check', style: { marginTop: '6px' } },
+          h('input', { type: 'checkbox', checked: s.level === 2, disabled: i === 0, onchange: (ev) => { if (ev.target.checked) s.level = 2; else delete s.level; mark(); } }),
+          h('span', { text: 'Sous-rubrique de la rubrique précédente (affichée en retrait)' }))));
     });
     box.append(h('button', { class: 'btn small', onclick: () => { t.sections.push(S.newSection()); mark(); renderSections(); setTimeout(() => { const f = box.querySelectorAll('.sec-edit .field'); f[f.length - 1] && f[f.length - 1].focus(); }, 60); } }, icon('plus'), h('span', { text: 'Ajouter une rubrique' })));
   }

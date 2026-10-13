@@ -109,7 +109,7 @@ const sectionForTheme = (theme, template) => { for (const re of THEME_SECTION[th
 
 export function extractionMessages(template, chunk, i, n, glossary = true, mode = 'themes') {
   const body = chunk.map((s) => `[${s.n}] ${s.text}`).join('\n');
-  const common = `- type : FAIT, DECISION (explicitement validée), HYPOTHESE (piste, idée ou simulation envisagée, pas décidée), A_CONFIRMER (information approximative ou hésitante), CORRECTION (remplace une information donnée plus tôt), ACTION (action à réaliser, avec qui et l'échéance si elles sont dites) ;\n- information : une phrase courte à la troisième personne (par exemple « Le client souhaite partir à la retraite à 62 ans. »), qui reprend exactement les montants, les dates et les noms, sans rien ajouter ;\n- phrases : numéros des phrases sources, séparés par des virgules.\nIgnore les politesses et les passages sans information. S'il n'y a aucune information utile, réponds seulement : AUCUNE.`;
+  const common = `- type : FAIT (information descriptive), DECISION (explicitement validée : « on décide », « c'est décidé », « on valide »), HYPOTHESE (piste, idée, possibilité ou simulation envisagée, NON décidée), A_CONFIRMER (information approximative ou à vérifier), CORRECTION (remplace une information donnée plus tôt), ACTION (engagement futur de faire quelque chose) ;\n- information : une phrase courte et précise (par exemple « Le client souhaite partir à la retraite à 62 ans. »). Reprends EXACTEMENT les montants (écris « euros » comme dans la transcription), les dates, les taux, les noms d'établissements et de produits, et garde les mots d'incertitude (environ, à confirmer, envisagé, prévu, en attente). N'ajoute rien. Une information = un seul fait : ne répète jamais le même fait ;\n- pour une ACTION : nomme la personne responsable (« le client », « le conseiller », un nom) SEULEMENT si l'extrait la désigne clairement ; sinon commence par un verbe à l'infinitif (« Envoyer la simulation… »). Ne devine pas qui est « je » ou « vous » ;\n- phrases : numéros des phrases sources, séparés par des virgules.\nIgnore les politesses, les anecdotes (trajet, météo, vacances, café) et tout ce qui est sans intérêt patrimonial. Une simple information descriptive n'est PAS une ACTION. Ne signale pas ce qui n'a pas été dit. S'il n'y a aucune information utile, réponds seulement : AUCUNE.`;
   let task;
   if (mode === 'plain') task = `Tâche : liste les informations utiles de cet extrait, une par ligne, au format exact :
  type | information | phrases
@@ -212,13 +212,19 @@ export function verifyFact(f, segs, ctx) {
 
 // ---------- 4. Type, rubrique, doublons, contradictions ----------
 export const DECISION_CUE = /\b(on maintient|on conserve|on garde|nous gardons|nous maintenons|nous conservons|d[ée]cid[ée]|on valide|valid[ée]|je confirme|on met(s)? [àa] jour|nous mettons [àa] jour|c'est d[ée]cid[ée]|on s'en occupe|on lance|on retient|on ouvre|on souscrit|on signe)\b/i;
-export const HYPO_CUE = /\b(on pourrait|pourrait|pourrions|envisag|piste|id[ée]e|hypoth|[àa] [ée]tudier|[ée]tudie|[ée]tudier|peut-[êe]tre|simulation|sans engagement|pas de d[ée]cision|aucune? d[ée]cision|pas d[ée]cid|n'est pas une recommandation|[àa] voir|r[ée]flexion)\b/i;
+export const HYPO_CUE = /\b(on pourrait|pourrait|pourrions|envisag|piste|id[ée]e|hypoth|[àa] [ée]tudier|[ée]tudie|[ée]tudier|peut-[êe]tre|simulation|sans engagement|pas de d[ée]cision|aucune? d[ée]cision|pas d[ée]cid|n'est pas une recommandation|[àa] voir|r[ée]flexion|propos\w*|sugg[ée]r\w*|pr[ée]conis\w*|serait possible|est possible|dispositifs? comme)\b/i;
 export const UNSURE_CUE = /\b(environ|peut-[êe]tre|[àa] confirmer|[àa] v[ée]rifier|je crois|il me semble|[àa] peu pr[èe]s|autour de|je ne sais plus|approximati|estim|non expertis|exact|fourchette|vers)\b/i;
-export const ACTION_CUE = /\b(envoi|enverr|transmet|transmett|fournir|r[ée]cup[ée]r|vous me|je vous|avant le|doit|doivent|[àa] faire|contact|v[ée]rifier|pr[ée]parer|demande|retourn|relev[ée]|joindre|fixer|appel)/i;
+export const ACTION_CUE = /\b(envoi|enverr|envoy|transmet|transmett|transmis|fournir|r[ée]cup[ée]r|vous me|je vous|je (?:me )?(?:charge|contacte|prends|prépare|reviens)|avant le|avant la fin|d'ici|doit|doivent|devra|[àa] faire|contact|v[ée]rifier|pr[ée]parer|demande|retourn|joindre|fixer|appel|relanc|planifi|programm|organis)/i;
+// Décision explicite dans les termes mêmes de l'information (et non dans une simple piste)
+const STRONG_DECISION = /\b(c'est d[ée]cid[ée]|on d[ée]cide|nous d[ée]cidons|d[ée]cid[ée]e?s?|on valide|nous validons|valid[ée]e?s?|on retient|on conserve|on maintient|on garde|on ne (?:le |la |les )?vend pas|on opte)\b/i;
+const STRONG_UNSURE = /(à confirmer|à vérifier|a confirmer|a verifier|pas le chiffre exact|je crois|il me semble|je ne sais plus|je ne connais pas)/i;
 // Le moteur peut se tromper sur le type : le programme corrige les cas évidents d'après les termes réellement employés dans la transcription.
 export function refineType(f, support) {
   const t = f.text + ' ' + (support || '');
   let type = f.type;
+  if (type === 'FAIT' && STRONG_DECISION.test(f.text) && !HYPO_CUE.test(f.text) && !/\bn'?(?:est|a) pas\b|pas de d[ée]cision|aucune d[ée]cision/i.test(t)) type = 'DECISION';
+  if (type === 'FAIT' && /\b(propos\w*|sugg[ée]r\w*|pr[ée]conis\w*|serait possible|est possible|dispositifs? comme)/i.test(f.text) && !DECISION_CUE.test(f.text) && !STRONG_DECISION.test(f.text)) type = 'HYPOTHESE';
+  if (type === 'FAIT' && STRONG_UNSURE.test(t) && !DECISION_CUE.test(f.text)) type = 'A_CONFIRMER';
   if (type === 'DECISION' && (HYPO_CUE.test(f.text) && !DECISION_CUE.test(f.text))) type = 'HYPOTHESE';
   else if (type === 'DECISION' && !DECISION_CUE.test(t)) type = 'FAIT';
   if ((type === 'FAIT' || type === 'ACTION') && HYPO_CUE.test(f.text) && !ACTION_CUE.test(f.text) && !DECISION_CUE.test(f.text) && /\b(on|nous)\b.*\b(pourrait|envisag|piste|id[ée]e|[ée]tudie)/i.test(t)) type = 'HYPOTHESE';
@@ -226,6 +232,16 @@ export function refineType(f, support) {
   if (type === 'HYPOTHESE' && !HYPO_CUE.test(t)) type = 'FAIT';
   if (type === 'A_CONFIRMER' && !UNSURE_CUE.test(t)) type = 'FAIT';
   return type;
+}
+// Anecdotes sans intérêt patrimonial (trajet, météo, politesses…) : écartées seulement si rien de patrimonial n'y figure (aucun chiffre, aucun produit)
+const ANECDOTE = /\b(trajet|rocade|route|meteo|pluie|beau temps|cafe|vacances|week end|merci|bonne (?:journee|soiree|route)|au revoir|bonjour|felicitations|agreable|est venue?)\b/;
+const DOMAIN = /\b(patrimoine|assurance|pea|per|scpi|impot|retraite|immobili\w*|credit|revenus?|donation|transmission|societe|placements?|epargne|actions?|contrat|banque|residence|loyers?)\b/;
+export const isFiller = (f) => { const t = normText(f.text); return ANECDOTE.test(t) && !/\d/.test(f.text) && !DOMAIN.test(t); };
+// Responsable d'une action : si le sujet (« le client », « le conseiller »…) a été déduit de « je » ou « vous », il n'est pas certain
+export function ownerUnsure(f, support) {
+  if (f.type !== 'ACTION' || !/^(le client|la cliente|le conseiller|la conseill[èe]re|madame|monsieur|mme|m\.)/i.test(f.text.trim())) return false;
+  const s = normText(support);
+  return /\b(je|j|vous|nous)\b/.test(s) && !/\b(client|cliente|conseiller|conseillere|madame|monsieur|mme)\b/.test(s);
 }
 const findSec = (template, re) => template.sections.findIndex((s) => re.test(s.title));
 const KEYWORD_THEMES = [
@@ -243,10 +259,50 @@ const KEYWORD_THEMES = [
   [/taux|d[ée]cote|seuil|plafond|dispositif|exon[ée]ration|article|loi\b|r[èe]glement|pourcentage|%/, /technique|chiffre/i],
   [/prudent|retenir|recommand|erreur fr[ée]quente|conseil/, /enseignement|retenir|action/i],
 ];
+// ---------- Trames « suivi patrimonial » : rôles des rubriques et aiguillage par le programme ----------
+// Quand la trame distingue patrimoine financier, immobilier et épargne salariale, le moteur d'IA ne décide pas seul : le programme
+// reconnaît les produits cités (vocabulaire ci-dessous) et corrige les erreurs de classement les plus fréquentes.
+const ROLE_RE = {
+  situation: /situation|actualit|contexte/i, financier: /patrimoine financier|placements?|[ée]pargne et placements/i, immobilier: /immobilier/i,
+  salarial: /salarial|retraite professionnelle/i, objectifs: /besoin|objectif/i, solutions: /solution|piste|produits?\b/i,
+  actions: /^actions?\b|^t[âa]ches?\b/i, suivi: /suivi|[ée]ch[ée]ance|prochaines? /i, decisions: /d[ée]cision/i,
+};
+const rolesCache = new WeakMap();
+export function rolesOf(template) {
+  if (rolesCache.has(template)) return rolesCache.get(template);
+  const R = new Map();
+  for (const [role, re] of Object.entries(ROLE_RE)) { const k = template.sections.findIndex((s) => re.test(s.title)); if (k >= 0) R.set(role, k); }
+  const ok = ['financier', 'immobilier', 'salarial', 'actions', 'suivi', 'solutions', 'situation'].every((r) => R.has(r));
+  const res = ok ? R : null; rolesCache.set(template, res); return res;
+}
+// Vocabulaire (texte sans accents ni ponctuation, en minuscules)
+const LEX = {
+  salarial: /\b(pee|perco|per collectif|per entreprise|pero|perecoi?|plan d epargne (?:entreprise|salarial|groupe|retraite collectif)|epargne salariale|interessement|participation|abondement|actions? gratuites?|attribution gratuite|stock options?|bspce|aga|retraite (?:supplementaire|chapeau|d entreprise)|article 83|article 39|compte epargne temps)\b/,
+  immobilier: /\b(immobili\w*|appartement|maison|residence|locatif|loyers?|sci|immeuble|terrain|studio|parking|lmnp|lmp|pinel|scpi|opci|nue propriete|usufruit|taxe fonciere|local professionnel|garage)\b/,
+  financier: /\b(assurance vie|capitalisation|pea|compte titres|cto|livret a|livret|ldds|per|portefeuille|obligations?|etf|opcvm|tresorerie|liquidites?|comptes? (?:courant|joint|bancaire)|placements?|banque|private equity|fcpi|fip|luxembourgeoi\w*)\b/,
+};
+const SUIVI_CUE = /\b(prochain(?:e)? (?:rendez vous|reunion|point|rencontre|revue)|rendez vous (?:est )?fixe|en attente|dans l attente|attend\w*|a revoir|on revoit|nous revoyons|on reverra|on refait un point|on fait un point|un point sur|echeance|rappel|relance|au plus tard|a suivre|reporte\w*|devrait arriver)\b/;
+const OBJ_CUE = /\b(souhait\w*|objectifs?|besoins?|projets?|voudrait|aimerait|veut|priorite|cherche a|financer les etudes|complement de revenus?)\b/;
+function routeByRoles(f, t, R, llm) {
+  if (f.type === 'ACTION') return R.get('actions');
+  if (f.type === 'DECISION') return R.has('decisions') ? R.get('decisions') : R.get('solutions');
+  if (f.type === 'HYPOTHESE') return R.get('solutions');
+  const roleOf = (k) => [...R.entries()].find(([, v]) => v === k)?.[0];
+  if (SUIVI_CUE.test(t) && f.type !== 'CORRECTION') return R.get('suivi');
+  if (OBJ_CUE.test(t) && R.has('objectifs')) return R.get('objectifs');
+  const cand = ['salarial', 'immobilier', 'financier'].filter((r) => LEX[r].test(t));
+  const llmRole = llm >= 0 ? roleOf(llm) : null;
+  if (cand.length) return R.get(cand.includes(llmRole) ? llmRole : cand[0]);
+  // aucun produit reconnu : on suit le moteur, sauf rubriques réservées aux actions, au suivi et aux solutions (une simple information n'y a pas sa place)
+  if (llm >= 0 && !['actions', 'suivi', 'solutions'].includes(llmRole)) return llm;
+  return R.get('situation');
+}
 export function assignSection(f, template, classify = 'hybrid') {
   const sections = template.sections;
   const t = normText(f.text);
   const byRe = (re) => findSec(template, re);
+  const R = rolesOf(template);
+  if (R && classify !== 'none') return routeByRoles(f, t, R, f.sec);
   // règles imposées par le type : une décision va dans « Décisions », une hypothèse jamais dans « Décisions »
   if (f.type === 'DECISION') { const k = byRe(/d[ée]cision/i); if (k >= 0) return k; }
   if (/prochain rendez|rendez vous fixe|prochaine reunion|prochaine rencontre|nous nous reverrons/.test(t)) { const k = byRe(/prochaine|suite/i); if (k >= 0) return k; }
@@ -283,14 +339,36 @@ const jaccard = (a, b) => { const A = subject(a), B = subject(b); if (A.size < 2
 function numKey(text) { return numbersIn(text).filter(isAmount).map((n) => n.value).sort().join(','); }
 const unitKind = (text) => (/%|pour\s?cent/i.test(text) ? '%' : '€');
 const GENERIC_SEC = /abord|principal|contexte|objet/i;
+// Doublons : même fait écrit de deux façons (extraits qui se chevauchent, variante « à confirmer », reformulation). Comparaison par racines de mots
+// (5 premières lettres, sigles compris) et par montants : deux informations aux montants différents ne sont jamais fusionnées.
+const STEM_STOP = new Set(['les', 'des', 'une', 'est', 'que', 'qui', 'son', 'ses', 'sur', 'par', 'pas', 'aux', 'avec', 'dans', 'pour', 'cette', 'client', 'cliente', 'conseiller', 'madame', 'monsieur', 'euros', 'euro', 'environ', 'confirmer', 'estime', 'estimee']);
+function stemSet(text) {
+  const out = new Set();
+  for (const w of normText(text).split(' ')) { if (w.length < 3 || /^\d+$/.test(w) || STEM_STOP.has(w) || GENERIC.has(w)) continue; out.add(w.length > 5 ? w.slice(0, 5) : w); }
+  return out;
+}
+export function isDuplicate(a, b) {
+  if (numKey(a.text) !== numKey(b.text)) return false;
+  if ((a.type === 'DECISION' && b.type === 'HYPOTHESE') || (a.type === 'HYPOTHESE' && b.type === 'DECISION')) return false;
+  const A = stemSet(a.text), B = stemSet(b.text), n = Math.min(A.size, B.size);
+  if (n < (numKey(a.text) ? 2 : 3)) return false;
+  let c = 0; for (const w of A) if (B.has(w)) c++;
+  return c / n >= (numKey(a.text) ? 0.67 : 0.8) && (a.sec === b.sec || c / n >= 0.85);
+}
 export function consolidate(facts, template) {
   const kept = [];
   const rank = (f) => (f.type === 'FAIT' ? 0 : 1) + (template && !GENERIC_SEC.test((template.sections[f.sec] || {}).title || '') ? 0.5 : 0);
+  // Quand deux formulations du même fait n'ont pas le même type, on garde le plus prudent (incertain > piste > décision > action > fait).
+  const CAUTION = { A_CONFIRMER: 5, HYPOTHESE: 4, DECISION: 3, ACTION: 2, CORRECTION: 1, FAIT: 0 };
   for (const f of facts) {
-    const dup = kept.find((k) => sameCore(k.text, f.text, 2) >= 0.8 && numKey(k.text) === numKey(f.text) && (k.sec === f.sec || sameCore(k.text, f.text, 2) >= 0.9));
+    const dup = kept.find((k) => isDuplicate(k, f));
     if (dup) {
       dup.refs = [...new Set([...dup.refs, ...f.refs])].sort((a, b) => a - b);
-      if (rank(f) > rank(dup)) { dup.type = f.type; dup.sec = f.sec; dup.text = f.text.length >= dup.text.length - 10 ? f.text : dup.text; }
+      const better = rank(f) > rank(dup);
+      const longer = f.text.length > dup.text.length + 10;
+      if ((CAUTION[f.type] || 0) > (CAUTION[dup.type] || 0)) dup.type = f.type;
+      if (better) dup.sec = f.sec;
+      if (longer || (better && f.text.length >= dup.text.length - 10)) dup.text = f.text;
       continue;
     }
     kept.push({ ...f });
@@ -319,7 +397,7 @@ export function classifyMessages(template, batch) {
   const list = batch.map((f, i) => `${i + 1}. [${f.type}] ${f.text}`).join('\n');
   return [
     { role: 'system', content: SYSTEM },
-    { role: 'user', content: `Rubriques du compte rendu :\n${rub}\n\nInformations :\n${list}\n\nPour chaque information, donne le NOM EXACT de la rubrique où elle doit figurer. Réponds par une ligne par information, au format « numéro de l'information : nom de la rubrique », sans aucun commentaire.\nChoisis la rubrique la plus SPÉCIFIQUE ; n'utilise une rubrique générale (principales informations, sujets abordés, contexte) que si aucune autre ne convient. Utilise toutes les rubriques qui conviennent.\nRègles : une décision explicitement validée (DECISION) va dans la rubrique des décisions ; une hypothèse ou une piste (HYPOTHESE) ne va jamais dans les décisions ; une action ou un document à fournir va dans la rubrique des actions ou des documents ; un montant de patrimoine va dans la rubrique de son type (immobilier, placements financiers, revenus, charges) ; la famille et l'activité professionnelle vont dans la rubrique de situation familiale ou professionnelle ; le nom et la fonction d'une personne vont dans la rubrique des intervenants ou des participants.` },
+    { role: 'user', content: `Rubriques du compte rendu :\n${rub}\n\nInformations :\n${list}\n\nPour chaque information, donne le NOM EXACT de la rubrique où elle doit figurer. Réponds par une ligne par information, au format « numéro de l'information : nom de la rubrique », sans aucun commentaire.\nChoisis la rubrique la plus SPÉCIFIQUE ; n'utilise une rubrique générale (principales informations, sujets abordés, contexte) que si aucune autre ne convient. Utilise toutes les rubriques qui conviennent.\nRègles : une décision explicitement validée (DECISION) va dans la rubrique des décisions ; une hypothèse ou une piste (HYPOTHESE) ne va jamais dans les décisions ; une action ou un document à fournir va dans la rubrique des actions ou des documents ; un montant de patrimoine va dans la rubrique de son type (immobilier, placements financiers, revenus, charges) ; la famille et l'activité professionnelle vont dans la rubrique de situation familiale ou professionnelle ; le nom et la fonction d'une personne vont dans la rubrique des intervenants ou des participants. Respecte les mentions « Contient » et « Ne contient pas » des rubriques. Une information descriptive (situation, constat, montant) ne va JAMAIS dans les actions ni dans les solutions. Si ces rubriques existent : SCPI, SCI et biens immobiliers dans l'immobilier ; assurance-vie, PEA, compte-titres, PER individuel et livrets dans le patrimoine financier ; PEE, PER collectif, intéressement, participation et actions gratuites dans l'épargne salariale.` },
   ];
 }
 // Réponses « 3 : nom de la rubrique » ou « 3 : 5 » : le nom est reconnu même s'il est abrégé ou mal orthographié
@@ -342,12 +420,12 @@ export function parseClassification(text, n, template) {
 }
 // ---------- 5. Rédaction d'une rubrique ----------
 const MARK = { A_CONFIRMER: ' (à confirmer)', HYPOTHESE: ' (hypothèse, non décidée)' };
-export const bulletOf = (f) => '- ' + f.text.replace(/\s+/g, ' ').replace(/[.]+$/, '') + (MARK[f.type] && !/confirmer|hypoth/i.test(f.text) ? MARK[f.type] : '') + (f.flag ? ' (valeur à vérifier)' : '');
-export function writeMessages(section, facts) {
-  const list = facts.map((f, i) => `${i + 1}. ${f.text}${f.type === 'A_CONFIRMER' ? ' [à confirmer]' : f.type === 'HYPOTHESE' ? ' [hypothèse, non décidée]' : ''}`).join('\n');
+export const bulletOf = (f, decMark = false) => '- ' + f.text.replace(/\s+/g, ' ').replace(/[.]+$/, '') + (MARK[f.type] && !/confirmer|hypoth/i.test(f.text) ? MARK[f.type] : '') + (decMark && f.type === 'DECISION' && !/d[ée]cid|valid/i.test(f.text) ? ' (décision validée)' : '') + (f.ownerUnsure ? ' (responsable à confirmer)' : '') + (f.flag ? ' (valeur à vérifier)' : '');
+export function writeMessages(section, facts, decMark = false) {
+  const list = facts.map((f, i) => `${i + 1}. ${f.text}${f.type === 'A_CONFIRMER' ? ' [à confirmer]' : f.type === 'HYPOTHESE' ? ' [hypothèse, non décidée]' : f.type === 'DECISION' && decMark ? ' [décision validée]' : ''}${f.ownerUnsure ? ' [responsable à confirmer]' : ''}`).join('\n');
   return [
     { role: 'system', content: SYSTEM },
-    { role: 'user', content: `Rubrique : ${section.title}${section.instruction ? '\nConsigne : ' + section.instruction : ''}\n\nInformations vérifiées :\n${list}\n\nRédige le contenu de cette rubrique en français professionnel, précis et fluide (puces courtes ou phrases courtes), UNIQUEMENT à partir des informations ci-dessus. N'ajoute aucun fait, montant, date, nom ni conseil. Recopie les montants et les dates exactement. Garde les mentions « à confirmer » et « hypothèse ». Ne présente jamais une hypothèse comme une décision.` },
+    { role: 'user', content: `Rubrique : ${section.title}${section.instruction ? '\nConsigne : ' + section.instruction : ''}\n\nInformations vérifiées :\n${list}\n\nRédige le contenu de cette rubrique comme une note de Family Office : des puces courtes et synthétiques, UNIQUEMENT à partir des informations ci-dessus.\n- Une puce par sujet : regroupe sur une même puce les informations qui concernent le même produit, bien ou sujet, et supprime les répétitions.\n- Style nominal et factuel (par exemple « Assurance-vie Alpha Assurances : 310 000 euros au 30 juin »), sans « le client » superflu.\n- Recopie EXACTEMENT tous les montants, dates, taux, établissements et noms de produits, et garde les mots d'incertitude (environ, à confirmer, envisagé, prévu, en attente).\n- Garde les mentions entre crochets sous la forme « (à confirmer) », « (hypothèse, non décidée) », « (décision validée) », « (responsable à confirmer) ».\n- N'ajoute aucun fait, aucun chiffre, aucun conseil, aucun responsable ni échéance qui ne soit pas dans la liste. N'oublie aucune information utile. Ne présente jamais une hypothèse comme une décision.` },
   ];
 }
 // Le texte rédigé est accepté seulement s'il ne contient rien d'absent des informations vérifiées
@@ -355,6 +433,8 @@ export function checkWritten(text, facts, ctx) {
   if (!text || text.trim().length < 10 || /^non évoqué/i.test(text.trim())) return false;
   const factVals = amountSet(facts.map((f) => f.text).join(' . '));
   for (const a of amountsOf(text)) if (!factVals.has(a.v)) return false;
+  const textVals = amountSet(text);                                                       // rien d'important ne doit disparaître : tous les montants vérifiés restent présents
+  for (const v of amountsOf(facts.map((f) => f.text).join(' . ')).map((a) => a.v)) if (!textVals.has(v)) return false;
   const factNorm = normText(facts.map((f) => f.text).join(' '));
   for (const d of datesIn(text)) if (!new RegExp('0?' + d.day + '\\s+' + d.month, 'i').test(factNorm)) return false;
   if (unknownNames(text, factNorm + ' ' + ctx.fullNorm).length) return false;
@@ -401,6 +481,9 @@ export async function generateReportV2({ chat, template, transcript, maxChars = 
   }
   // 4. rubriques, doublons, contradictions
   for (const f of all) f.type = refineType(f, f.refs.map((n) => (ctx.byN.get(n) || {}).text).join(' '));
+  for (const f of all) f.ownerUnsure = ownerUnsure(f, f.refs.map((n) => (ctx.byN.get(n) || {}).text).join(' '));
+  { const n0 = all.length; all = all.filter((f) => !isFiller(f)); stats.filtered = n0 - all.length; }
+  const decMark = !template.sections.some((s) => /d[ée]cision/i.test(s.title));       // trame sans rubrique « Décisions » : les décisions sont signalées dans la rubrique des solutions
   if (pmode === 'plain' && classify !== 'rules') {                // classement par rubrique : requêtes dédiées, par lots
     for (let i = 0; i < all.length; i += 30) {
       const batch = all.slice(i, i + 30);
@@ -423,17 +506,17 @@ export async function generateReportV2({ chat, template, transcript, maxChars = 
     onProgress({ step: 'rédaction', i: k + 1, n: nSec, title: sec.title });
     let content = 'Non évoqué', mode = 'vide';
     if (mine.length) {
-      content = mine.map(bulletOf).join('\n'); mode = 'liste';
+      content = mine.map((f) => bulletOf(f, decMark)).join('\n'); mode = 'liste';
       const wantRewrite = rewrite === 'on' || (rewrite === 'auto' && mine.length >= 3);
       if (wantRewrite) {
         try {
-          const text = await call(writeMessages(sec, mine), Math.min(900, 120 + mine.length * 70));
+          const text = await call(writeMessages(sec, mine, decMark), Math.min(900, 120 + mine.length * 70));
           if (checkWritten(text, mine, ctx)) { content = text; mode = 'rédigé'; stats.rewritten++; } else stats.fallback++;
         } catch (e) { if (e.message === 'annulé') throw e; stats.fallback++; }
       }
     }
     const evidence = mine.map((f) => ({ t: f.text, st: f.type, q: f.refs.slice(0, 3).map((n) => ctx.byN.get(n).text.slice(0, 280)), n: f.refs.slice(0, 3) }));
-    const sflags = [...mine.filter((f) => f.type === 'A_CONFIRMER').map((f) => ({ kind: 'à confirmer', text: f.text })), ...mine.flatMap((f) => (f.flags || []).map((x) => ({ kind: 'à vérifier', text: x + ' : ' + f.text }))), ...reportFlags.filter((fl) => fl.kind === 'contradiction' && mine.some((f) => f.flag && fl.text.includes(f.text)))];
+    const sflags = [...mine.filter((f) => f.type === 'A_CONFIRMER').map((f) => ({ kind: 'à confirmer', text: f.text })), ...mine.filter((f) => f.ownerUnsure).map((f) => ({ kind: 'à confirmer', text: 'Responsable non indiqué clairement dans la transcription : ' + f.text })), ...mine.flatMap((f) => (f.flags || []).map((x) => ({ kind: 'à vérifier', text: x + ' : ' + f.text }))), ...reportFlags.filter((fl) => fl.kind === 'contradiction' && mine.some((f) => f.flag && fl.text.includes(f.text)))];
     sections.push({ title: sec.title, content, mode, evidence, flags: sflags });
   }
   const covered = new Set(facts.flatMap((f) => f.refs)).size;

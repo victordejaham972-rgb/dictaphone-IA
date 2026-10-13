@@ -1,4 +1,4 @@
-// Dictaphone IA – prototype de faisabilité. Logique principale (interface + enchaînement des étapes).
+// ADE-CI Notes – prototype de faisabilité. Logique principale (interface + enchaînement des étapes).
 import * as DB from './db.js';
 import { ChunkWriter, Recorder, importFile, buildWavBlob, SR, CHUNK_SEC } from './audio.js';
 
@@ -667,7 +667,7 @@ $('restore').onchange = async () => {
   if (!f || !s) return;
   try {
     const m = JSON.parse(await f.text());
-    if (m.format !== 'dictaphone-ia-sauvegarde') throw new Error('ce fichier n\'est pas une sauvegarde Dictaphone IA');
+    if (m.format !== 'dictaphone-ia-sauvegarde') throw new Error('ce fichier n\'est pas une sauvegarde ADE-CI Notes');
     if (Math.abs(m.durationSec - s.durationSec) > 5 && !confirm(`Durées différentes (sauvegarde ${fmtT(m.durationSec)}, enregistrement ${fmtT(s.durationSec)}). Appliquer quand même ?`)) return;
     s.segments = m.segments || []; s.summary = m.summary || ''; s.bookmarks = m.bookmarks || [];
     s.doneChunks = m.doneChunks >= m.nChunks ? s.nChunks : Math.min(m.doneChunks, s.nChunks);
@@ -679,7 +679,7 @@ $('restore').onchange = async () => {
 
 $('btn-report').onclick = async () => {
   if (!state.diag) await runDiag();
-  const txt = [`RAPPORT Dictaphone IA v${VERSION} – ${new Date().toISOString()}`, '', '--- Diagnostic ---', state.diag, '', '--- Mesures ---', ...metrics.map((m) => JSON.stringify(m)), '', '--- Journal ---', ...logLines.slice(-80)].join('\n');
+  const txt = [`RAPPORT ADE-CI Notes v${VERSION} – ${new Date().toISOString()}`, '', '--- Diagnostic ---', state.diag, '', '--- Mesures ---', ...metrics.map((m) => JSON.stringify(m)), '', '--- Journal ---', ...logLines.slice(-80)].join('\n');
   $('report').value = txt;
   try { await navigator.clipboard.writeText(txt); log('Rapport copié dans le presse-papiers'); } catch { $('report').select(); }
 };

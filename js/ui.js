@@ -72,6 +72,17 @@ export function toast(msg, ms = 2600) {
   toastTimer = setTimeout(() => t.classList.remove('show'), ms);
 }
 
+// Message avec un bouton d'action (« Annuler ») : sert à rendre une suppression immédiatement réversible.
+export function toastAction(msg, label, onAction, ms = 8000) {
+  let t = document.getElementById('toast');
+  if (!t) { t = h('div', { id: 'toast', role: 'status', 'aria-live': 'polite' }); document.body.appendChild(t); }
+  t.replaceChildren(h('span', { text: msg + ' ' }), h('button', { class: 'toast-act', text: label, onclick: () => { t.classList.remove('show'); clearTimeout(toastTimer); onAction(); } }));
+  t.style.pointerEvents = 'auto';
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.classList.remove('show'); t.style.pointerEvents = ''; }, ms);
+}
+
 // ---------- Feuilles (fenêtres du bas) ----------
 export function sheet({ title, build, wide = false }) {
   const overlay = h('div', { class: 'overlay' });

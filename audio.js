@@ -1,7 +1,7 @@
 // Audio : tout est converti en 16 kHz mono 16 bits et stocké par morceaux de 30 s.
 // Ainsi, une réunion de 2 h n'est jamais chargée entièrement en mémoire par l'application
 // (2 h à 16 kHz en 16 bits = environ 230 Mo sur disque, lus 30 s à la fois).
-import { putChunk, getChunkBlob } from './db.js';
+import { putChunk, getChunkBlob, deleteChunk } from './db.js';
 
 export const SR = 16000;
 export const CHUNK_SEC = 30;
@@ -82,6 +82,58 @@ export async function buildWavBlob(session) {
   h.setUint32(24, SR, true); h.setUint32(28, SR * 2, true); h.setUint16(32, 2, true); h.setUint16(34, 16, true);
   w(36, 'data'); h.setUint32(40, bytes, true);
   return new Blob([h.buffer, ...parts], { type: 'audio/wav' });
+}
+
+// ---------- Empreinte et reprise d'un audio ----------
+// Empreinte = SHA-256 des empreintes de chaque morceau mises bout à bout : identique avant export et après réimport si, et seulement si,
+// tous les octets audio sont identiques. Les morceaux sont lus un par un (jamais tout l'audio en mémoire).
+const hex = (buf) => [...new Uint8Array(buf)].map((x) => x.toString(16).padStart(2, '0')).join('');
+export async function audioDigest(session) {
+  const hashes = []; let bytes = 0;
+  for (let i = 0; i < session.nChunks; i++) {
+    const b = await getChunkBlob(session.id, i);
+    bytes += b.size;
+    hashes.push(new Uint8Array(await crypto.subtle.digest('SHA-256', await b.arrayBuffer())));
+  }
+  const all = new Uint8Array(hashes.length * 32); hashes.forEach((h, i) => all.set(h, i * 32));
+  return { bytes, chunks: session.nChunks, sha256: hex(await crypto.subtle.digest('SHA-256', all)) };
+}
+// Rattache un fichier WAV (celui exporté par l'application : 16 kHz, mono, 16 bits) à une fiche SANS audio. Ne remplace jamais un audio existant.
+// Chaque morceau écrit est relu et comparé avant de continuer ; au moindre écart, les morceaux écrits sont retirés et rien n'est modifié.
+export async function attachWav(session, file, { onProgress = () => {} } = {}) {
+  if (session.nChunks > 0) throw new Error('Cette fiche contient déjà un audio : il n\'est jamais remplacé.');
+  const head = new DataView(await file.slice(0, 4096).arrayBuffer());
+  const tag = (o, s) => [...s].every((c, i) => head.getUint8(o + i) === c.charCodeAt(0));
+  if (head.byteLength < 44 || !tag(0, 'RIFF') || !tag(8, 'WAVE')) throw new Error('Ce fichier n\'est pas un WAV.');
+  let p = 12, fmt = null, dataAt = -1, dataLen = 0;
+  while (p + 8 <= head.byteLength) {
+    const id = String.fromCharCode(head.getUint8(p), head.getUint8(p + 1), head.getUint8(p + 2), head.getUint8(p + 3)), len = head.getUint32(p + 4, true);
+    if (id === 'fmt ') fmt = { code: head.getUint16(p + 8, true), ch: head.getUint16(p + 10, true), sr: head.getUint32(p + 12, true), bits: head.getUint16(p + 22, true) };
+    if (id === 'data') { dataAt = p + 8; dataLen = len; break; }
+    p += 8 + len + (len & 1);
+  }
+  if (!fmt || dataAt < 0) throw new Error('En-tête WAV illisible.');
+  if (fmt.code !== 1 || fmt.ch !== 1 || fmt.sr !== SR || fmt.bits !== 16) throw new Error('Seul le WAV exporté par l\'application est accepté (16 kHz, mono, 16 bits).');
+  const declared = dataLen;
+  if (dataAt + dataLen > file.size) dataLen = file.size - dataAt;                    // fichier tronqué : signalé au retour
+  const step = CHUNK * 2, n = Math.ceil(dataLen / step);
+  if (n < 1) throw new Error('Le fichier ne contient pas d\'audio.');
+  const written = [];
+  try {
+    for (let i = 0; i < n; i++) {
+      const part = file.slice(dataAt + i * step, dataAt + Math.min(dataLen, (i + 1) * step));
+      await putChunk(session.id, i, part); written.push(i);
+      const back = await getChunkBlob(session.id, i);
+      const a = new Uint8Array(await part.arrayBuffer()), b = new Uint8Array(await back.arrayBuffer());
+      if (a.length !== b.length || a.some((v, k) => v !== b[k])) throw new Error('relecture différente à l\'écriture');
+      onProgress({ done: i + 1, total: n });
+    }
+  } catch (err) {
+    for (const i of written) { try { await deleteChunk(session.id, i); } catch {} }
+    throw new Error('Import interrompu, rien n\'a été modifié : ' + err.message);
+  }
+  const next = { ...session, nChunks: n, doneChunks: n, hadAudio: true, durationSec: Math.round(dataLen / 2 / SR) };
+  return { session: next, digest: await audioDigest(next), truncated: dataLen !== declared };
 }
 
 // ---------- Enregistrement micro ----------

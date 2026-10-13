@@ -16,10 +16,16 @@ export function reportText(e, folders, templateName) {
   if (templateName) parts.push('Trame : ' + templateName);
   parts.push('');
   if (e.iaInfo && !e.iaInfo.reviewed) parts.push('[BROUILLON généré par IA : relecture humaine requise avant utilisation]', '');
-  for (const s of reportOf(e)) {
-    if (!(s.content || '').trim()) continue;
-    parts.push(s.title.toUpperCase(), s.content.trim(), '');
-  }
+  const secs = reportOf(e);
+  secs.forEach((s, i) => {
+    if (!(s.content || '').trim()) {
+      // rubrique-parent sans texte propre : son titre reste si une sous-rubrique rédigée la suit
+      let sub = false; if (s.level !== 2) for (let k = i + 1; k < secs.length && secs[k].level === 2; k++) if ((secs[k].content || '').trim()) { sub = true; break; }
+      if (sub) parts.push(s.title.toUpperCase(), '');
+      return;
+    }
+    parts.push(s.level === 2 ? s.title + ' :' : s.title.toUpperCase(), s.content.trim(), '');
+  });
   return parts.join('\n').trim() + '\n';
 }
 
@@ -83,7 +89,7 @@ export async function docPdfFile(e, folders, templateName, kind = 'report') {
 }
 export const reportPdfFile = (e, folders, templateName) => docPdfFile(e, folders, templateName, 'report');
 // Envoi par mail : on prépare un lien « mailto: » ; la messagerie de l'appareil s'ouvre avec le message prêt.
-// Rien n'est envoyé par Dictaphone IA : l'utilisateur relit puis envoie lui-même depuis Mail, Outlook, etc.
+// Rien n'est envoyé par ADE-CI Notes : l'utilisateur relit puis envoie lui-même depuis Mail, Outlook, etc.
 export const validEmail = (a) => /^[^\s@<>(),;]+@[^\s@<>(),;]+\.[^\s@<>(),;]{2,}$/.test(a);
 export const splitAddresses = (s) => s.split(/[;,\s]+/).map((x) => x.trim()).filter(Boolean);
 export function mailtoHref({ to, subject, body }) {

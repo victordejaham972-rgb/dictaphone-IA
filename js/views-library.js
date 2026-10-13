@@ -49,11 +49,11 @@ export async function libraryView({ query, selectedId = null, remember = true })
         const r = await pickFolder({ categories: [f.category], folders, excludeIds: S.descendantIds(f.id, folders), current: { category: f.category, folderId: f.parentId }, title: 'Déplacer le dossier vers…' });
         if (r) { await S.moveFolder(f, r.folderId); reload(); toast('Dossier déplacé'); }
       } },
-      { label: 'Supprimer', icon: 'trash', danger: true, run: async () => {
-        const inside = entretiens.filter((e) => e.folderId === f.id).length, subs = folders.filter((x) => x.parentId === f.id).length;
-        const ok = await confirmDialog({ title: 'Supprimer ce dossier ?', danger: true, confirmLabel: 'Supprimer le dossier',
-          message: `« ${f.name} » sera supprimé.` + (inside || subs ? `\nSon contenu (${inside} entretien(s), ${subs} sous-dossier(s)) ne sera PAS supprimé : il sera remonté dans le dossier parent.` : '') });
-        if (ok) { await S.deleteFolder(f, folders, entretiens); toast('Dossier supprimé'); if (folderId === f.id) nav({ f: f.parentId || '' }); else reload(); }
+      { label: 'Supprimer…', icon: 'trash', danger: true, run: async () => {
+        // dossier SEUL (contenu conservé et remonté) ou dossier ET fiches (nom à saisir) : tout va dans la corbeille, restaurable
+        const { trashFolder } = await import('./trash-ui.js');
+        const r = await trashFolder(f, folders, entretiens, { onDone: () => {} });
+        if (r) { if (folderId === f.id || (folder && S.descendantIds(f.id, folders).has(folder.id))) nav({ f: f.parentId || '' }); else reload(); }
       } },
     ] });
   }
@@ -65,12 +65,26 @@ export async function libraryView({ query, selectedId = null, remember = true })
         const r = await pickFolder({ folders, current: { category: e.category, folderId: e.folderId }, title: 'Déplacer l\'entretien vers…' });
         if (r) { e.category = r.category; e.folderId = r.folderId; await S.saveEntretien(e); reload(); toast('Entretien déplacé'); }
       } },
-      { label: 'Supprimer', icon: 'trash', danger: true, run: async () => {
-        const ok = await confirmDialog({ title: 'Supprimer cet entretien ?', danger: true, confirmLabel: 'Supprimer définitivement',
-          message: `« ${e.title} » sera supprimé de cet appareil avec sa transcription, son compte rendu et son audio.\nCette action est irréversible. Pensez à faire une sauvegarde.` });
-        if (ok) { await S.removeEntretien(e.id); reload(); toast('Entretien supprimé'); }
+      { label: 'Mettre dans la corbeille', icon: 'trash', danger: true, run: async () => {
+        const { trashFiches } = await import('./trash-ui.js');
+        await trashFiches([e], { onDone: () => reload() });
       } },
     ] });
+  }
+  // ----- sélection multiple -----
+  const selected = new Set();
+  let selecting = false;
+  const selBar = h('div', { class: 'selbar', hidden: true });
+  const select = { has: (id) => selected.has(id), toggle: (e) => { if (selected.has(e.id)) selected.delete(e.id); else selected.add(e.id); renderList(); updBar(); } };
+  function updBar() {
+    selBar.hidden = !selecting;
+    selBar.replaceChildren(h('span', { text: selected.size ? `${selected.size} sélectionnée${selected.size > 1 ? 's' : ''}` : 'Touchez des fiches' }),
+      h('button', { class: 'btn small danger', text: 'Corbeille', disabled: !selected.size, onclick: async () => {
+        const list = entretiens.filter((e) => selected.has(e.id));
+        const { trashFiches } = await import('./trash-ui.js');
+        if (await trashFiches(list, { onDone: () => reload() })) { selected.clear(); selecting = false; updBar(); renderList(); }
+      } }),
+      h('button', { class: 'btn small', text: 'Terminer', onclick: () => { selecting = false; selected.clear(); updBar(); renderList(); } }));
   }
 
   // ----- rendu -----
@@ -81,7 +95,7 @@ export async function libraryView({ query, selectedId = null, remember = true })
     const q = norm(state.q.trim());
     const sort = sorter(state.sort);
     const inCat = (e) => !cat || (cat === 'none' ? !e.category : e.category === cat);
-    const flat = (items) => h('div', { class: 'list' }, items.sort(sort).map((e) => entretienRow(e, { onMore: entretienMenu, showCat: !cat, selected: e.id === selectedId })));
+    const flat = (items) => h('div', { class: 'list' }, items.sort(sort).map((e) => entretienRow(e, { onMore: entretienMenu, showCat: !cat, selected: e.id === selectedId, select: selecting ? select : null })));
     const catRow = (c, n, nf) => h('a', { class: 'row', href: '#/bibliotheque?cat=' + c.id },
       h('div', { class: 'tile' }, catIcon(c.id)),
       h('div', { class: 'grow' }, h('div', { class: 't', text: c.label }), h('div', { class: 'm', text: `${n} entretien${n > 1 ? 's' : ''} · ${nf} dossier${nf > 1 ? 's' : ''}` })),
@@ -96,7 +110,7 @@ export async function libraryView({ query, selectedId = null, remember = true })
       let items = entretiens.filter(inCat);
       if (filter === 'transcriptions') items = items.filter(S.hasTranscript);
       if (filter === 'rapports') items = items.filter(S.hasReport);
-      if (filter === 'arediger') items = items.filter((e) => S.hasTranscript(e) && !S.hasReport(e));
+      if (filter === 'arediger') items = items.filter((e) => S.stepOf(e) !== 'termine');
       listBox.append(head('Entretiens'), items.length ? flat(items) : empty('Rien à afficher', 'Aucun entretien ne correspond à ce filtre.'));
       return;
     }
@@ -158,13 +172,16 @@ export async function libraryView({ query, selectedId = null, remember = true })
     path.map((f, i) => [h('span', { text: '›' }), i === path.length - 1 ? h('b', { style: { color: 'var(--ink)' }, text: f.name }) : h('button', { text: f.name, onclick: () => nav({ f: f.id }) })])) : null;
 
   const el = h('div', { class: 'view' },
-    h('div', { class: 'eyebrow', text: filter === 'transcriptions' ? 'Transcriptions' : filter === 'rapports' ? 'Comptes rendus' : filter === 'arediger' ? 'À rédiger' : 'Bibliothèque' }),
+    h('div', { class: 'eyebrow', text: filter === 'transcriptions' ? 'Transcriptions' : filter === 'rapports' ? 'Comptes rendus' : filter === 'arediger' ? 'À traiter' : 'Bibliothèque' }),
     h('h1', { class: 'page-title', text: cat && cat !== 'none' ? catLabel(cat) : cat === 'none' ? 'Non classés' : 'Vos entretiens' }),
     h('div', { class: 'searchbox' }, icon('search'), search),
     catChips,
-    h('div', { class: 'tools' }, modeSeg, sortSel),
+    h('div', { class: 'tools' }, modeSeg, sortSel,
+      h('button', { class: 'btn small', 'aria-label': 'Sélectionner plusieurs fiches', onclick: () => { selecting = !selecting; selected.clear(); updBar(); renderList(); } }, icon('check'), h('span', { text: 'Sélectionner' }))),
     crumbs,
-    listBox);
-  renderList();
+    listBox,
+    selBar,
+    h('div', { style: { marginTop: '18px' } }, h('a', { class: 'btn small', href: '#/corbeille' }, icon('trash'), h('span', { text: 'Corbeille' }))));
+  renderList(); updBar();
   return { el };
 }

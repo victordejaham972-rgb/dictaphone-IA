@@ -1,18 +1,14 @@
 // Service worker : installation de l'application et ouverture rapide. Il ne met en cache QUE les fichiers de l'application
 // (jamais les données de l'utilisateur, qui restent dans IndexedDB). Les modèles d'IA du laboratoire sont gérés par leurs bibliothèques.
-const V = 'dictaphone-v13-0.6.1';
+const V = 'dictaphone-v20-0.8.5';
 const SHELL = [
   './', 'index.html', 'app.css', 'manifest.webmanifest',
-  'js/main.js', 'js/ui.js', 'js/store.js', 'js/defaults.js', 'js/common.js', 'js/exports.js', 'js/pdf.js', 'js/backup.js', 'js/ai.js', 'js/version.js', 'js/import.js', 'js/pdfread.js', 'js/update.js', 'js/theme.js', 'js/vocab-ui.js', 'js/ia-engine.js', 'js/ia-pipeline.js', 'js/ia-ui.js', 'js/ia-demo.js', 'js/assist.js', 'js/diag.js', 'diagnostic.html', 'js/ttf.js', 'fonts/pdf/AbhayaLibre-Regular.ttf', 'fonts/pdf/OpenSans-Light.ttf', 'fonts/pdf/OpenSans-Regular.ttf', 'vendor/pdfjs/pdf.min.mjs', 'vendor/pdfjs/pdf.worker.min.mjs',
+  'js/main.js', 'js/ui.js', 'js/store.js', 'js/defaults.js', 'js/common.js', 'js/exports.js', 'js/pdf.js', 'js/backup.js', 'js/version.js', 'js/import.js', 'js/pdfread.js', 'js/update.js', 'js/theme.js', 'js/vocab-ui.js', 'js/trash-ui.js', 'js/report-import.js', 'js/restore-names.js', 'js/diag.js', 'diagnostic.html', 'js/protect-ui.js', 'js/protect/engine.js', 'js/protect/lexicon.js', 'js/protect/patterns.js', 'js/protect/export.js', 'js/protect/dictionnaire-financier.json', 'js/protect/prenoms-insee.txt', 'js/protect/communes-insee.txt', 'js/vault.js', 'js/vault-ui.js', 'js/ttf.js', 'fonts/pdf/AbhayaLibre-Regular.ttf', 'fonts/pdf/OpenSans-Light.ttf', 'fonts/pdf/OpenSans-Regular.ttf', 'vendor/pdfjs/pdf.min.mjs', 'vendor/pdfjs/pdf.worker.min.mjs',
   'js/views-home.js', 'js/views-library.js', 'js/views-entretien.js', 'js/views-templates.js', 'js/views-settings.js',
   'db.js', 'audio.js',
   'fonts/abhaya-libre-latin-400-normal.woff2', 'fonts/abhaya-libre-latin-600-normal.woff2', 'fonts/open-sans-latin-wght-normal.woff2',
   'img/emblem-tile.png', 'img/emblem-ivory.png', 'icon-32.png', 'icon-180.png', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png',
-  // IA locale (page de rédaction, moteur hébergé, sonde)
-  'ia.html', 'ia-worker.js', 'ia-sonde.html', 'ia-sonde.js', // le moteur vendor/web-llm.js (6 Mo) est mis en cache à la première utilisation de l'IA, pas à l'installation
-  'js/ia-core.js', 'js/ia-verify.js', 'js/ia-score.js', 'js/ia-models.js', 'js/ia-local.js', 'js/ia-page.js',
-  // laboratoire (expérimental)
-  'labo.html', 'labo.js', 'style.css', 'stt-worker.js', 'llm-worker.js', 'recorder-worklet.js', 'sonde.html', 'sonde.js',
+  // IA locale et laboratoire : masqués, code conservé ; leurs fichiers ne sont plus préchargés (mis en cache seulement s'ils sont utilisés)
 ];
 
 self.addEventListener('install', (e) => {

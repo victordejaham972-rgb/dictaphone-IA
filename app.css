@@ -1,4 +1,4 @@
-/* Dictaphone IA – charte graphique Ade-ci Family Office.
+/* ADE-CI Notes – charte graphique Ade-ci Family Office.
    Couleurs : coquille d'œuf #F6F0E7, bleu canard #045C70, bleu marine #1F497D, gris foncé #444444, vert #C1FF72 (petits détails uniquement).
    Polices (licence SIL OFL, hébergées dans l'application) : Abhaya Libre Regular (titres), Open Sans (texte). */
 @font-face { font-family: "Open Sans"; font-weight: 300 800; font-style: normal; font-display: swap; src: url(fonts/open-sans-latin-wght-normal.woff2) format("woff2"); }
@@ -52,7 +52,7 @@ html.kbd .tabbar { opacity: 0; pointer-events: none; transform: translate3d(0, 1
 html.kbd .stickybar { bottom: 0; }
 html.kbd #app { padding-bottom: 28px; }
 html.kbd #toast { bottom: 22px; }
-.tabbar nav { max-width: 720px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr 1.1fr 1fr 1fr; align-items: end; }
+.tabbar nav { max-width: 720px; margin: 0 auto; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); align-items: end; }
 .tab { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 4px 0 2px; border: 0; background: none; color: #7D786E; font-size: 10.5px; font-weight: 600; text-decoration: none; min-height: 48px; }
 .tab.on { color: var(--teal); }
 .tab .l-d { display: none; }
@@ -348,3 +348,113 @@ html.kbd .update-banner { display: none; }
 .help summary { cursor: pointer; font: 600 14px var(--sans); color: var(--teal); min-height: 36px; padding: 6px 0; }
 .check .a-sub { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
 .rsec-head .pill { margin-right: 6px; }
+
+/* ---------- Protéger : pseudonymisation locale ---------- */
+.tabs button { font-size: 13px; padding-left: 2px; padding-right: 2px; white-space: nowrap; }
+.pstats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 14px; }
+.pstat { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); padding: 10px 8px; text-align: center; }
+.pstat b { display: block; font: 700 22px var(--serif); color: var(--ink); }
+.pstat span { font-size: 12px; color: var(--muted); }
+.pstat.warn { background: #FBE9D0; border-color: #E9B873; } .pstat.warn b { color: #8A4B00; }
+.pstat.ok b { color: var(--ok); }
+.pview { white-space: pre-wrap; word-break: break-word; margin: 0; padding: 18px; font-size: 16px; line-height: 1.85; max-height: 70vh; overflow: auto; }
+.pcols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.pchip { font: inherit; line-height: inherit; color: var(--ink); background: rgba(4, 92, 112, .13); border: 0; border-bottom: 2px solid var(--teal); border-radius: 5px; padding: 0 5px; margin: 0 1px; cursor: pointer; }
+.pchip.maybe { background: #FBE2BC; border-bottom-color: #D98A1B; color: #5C3300; }
+.pchip.decided { background: rgba(31, 73, 125, .16); border-bottom-color: var(--blue); }
+.pchip.keep { background: transparent; border-bottom: 2px dotted var(--muted); border-radius: 0; padding: 0; }
+.pchip.keep.info { border-bottom-style: dotted; opacity: .95; }
+.pchip.orig { background: rgba(4, 92, 112, .1); }
+.pchip.orig.maybe { background: #FBE2BC; }
+.pchip.flash { outline: 3px solid var(--teal); outline-offset: 2px; }
+:root[data-theme="dark"] .pstat.warn { background: #3B2A12; border-color: #8A5A1B; } :root[data-theme="dark"] .pstat.warn b { color: #F3C27A; }
+:root[data-theme="dark"] .pchip.maybe, :root[data-theme="dark"] .pchip.orig.maybe { background: #4A3414; color: #F6DFB8; border-bottom-color: #D98A1B; }
+@media (prefers-color-scheme: dark) { :root[data-theme="auto"] .pstat.warn { background: #3B2A12; border-color: #8A5A1B; } :root[data-theme="auto"] .pstat.warn b { color: #F3C27A; }
+  :root[data-theme="auto"] .pchip.maybe, :root[data-theme="auto"] .pchip.orig.maybe { background: #4A3414; color: #F6DFB8; border-bottom-color: #D98A1B; } }
+
+/* ----- Coffre chiffré : écran de verrouillage et clé de récupération ----- */
+.lockscreen { position: fixed; inset: 0; z-index: 45; background: var(--bg); display: flex; align-items: center; justify-content: center; padding: 24px 16px; overflow: auto; }
+.lock-box { width: 100%; max-width: 380px; text-align: center; }
+.lock-box .field { text-align: center; }
+.linkbtn { background: none; border: 0; color: var(--teal); font: inherit; font-size: 13.5px; text-decoration: underline; padding: 14px 6px; min-height: 44px; cursor: pointer; }
+.reckey { font: 700 19px/1.5 ui-monospace, Menlo, Consolas, monospace; letter-spacing: .04em; text-align: center; background: var(--surface); border: 1px dashed var(--line); border-radius: var(--r-sm); padding: 16px 10px; margin: 12px 0; color: var(--ink); user-select: all; word-break: break-all; }
+
+/* ----- Corbeille, sélection multiple, parcours ----- */
+.toast-act { background: transparent; border: 1px solid rgba(246, 240, 231, .6); color: #F6F0E7; border-radius: 999px; padding: 4px 12px; margin-left: 6px; font: inherit; font-weight: 700; cursor: pointer; }
+.row .selbox { width: 24px; height: 24px; border-radius: 8px; border: 2px solid var(--line); flex: none; display: grid; place-items: center; background: var(--surface); }
+.row .selbox.on { background: var(--teal); border-color: var(--teal); color: var(--on-teal); }
+.row .selbox svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 3; }
+.selbar { position: sticky; bottom: calc(var(--tab-h) + 12px + env(safe-area-inset-bottom)); z-index: 20; display: flex; gap: 10px; align-items: center; background: var(--navy); color: #F6F0E7; padding: 10px 12px; border-radius: 18px; margin-top: 14px; box-shadow: var(--shadow); }
+.selbar span { flex: 1; font-weight: 600; }
+.selbar .btn { width: auto; min-height: 44px; }
+.trash-item { margin-top: 10px; }
+.trash-item .acts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.trash-item .acts .btn { width: auto; flex: 1; min-width: 130px; }
+
+/* ----- Parcours guidé en 5 étapes ----- */
+.steps { display: flex; gap: 6px; margin: 16px 0 14px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.steps::-webkit-scrollbar { display: none; }
+.steps button { flex: 1 0 auto; min-width: 64px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 6px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); font: inherit; font-size: 11.5px; line-height: 1.15; cursor: pointer; min-height: 56px; }
+.steps button b { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--line); color: var(--ink); font-size: 13px; }
+.steps button.on { border-color: var(--teal); color: var(--ink); background: color-mix(in srgb, var(--teal) 10%, var(--surface)); }
+.steps button.on b { background: var(--teal); color: var(--on-teal); }
+.steps button.done b { background: color-mix(in srgb, var(--teal) 25%, var(--surface)); color: var(--teal); }
+.steps button.on.done b { background: var(--teal); color: var(--on-teal); }
+@media (min-width: 700px) { .steps button { flex-direction: row; justify-content: center; font-size: 13.5px; } }
+.stepnav { position: static; display: flex; gap: 10px; margin-top: 22px; padding: 10px 0 calc(var(--tab-h) + 24px + env(safe-area-inset-bottom)); }   /* non collante : ne masque jamais les boutons du contenu */
+.stepnav .btn { flex: 1; }
+.checklist { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
+.checklist li { display: flex; gap: 10px; align-items: flex-start; font-size: 14.5px; }
+.checklist li svg { width: 20px; height: 20px; flex: none; margin-top: 1px; stroke: currentColor; fill: none; stroke-width: 2.5; }
+.checklist li.ok { color: var(--ink); } .checklist li.ok svg { color: var(--teal); }
+.checklist li.ko { color: var(--danger); }
+.tplcard.on { border-color: var(--teal); box-shadow: 0 0 0 2px color-mix(in srgb, var(--teal) 30%, transparent); }
+.bigpaste { width: 100%; min-height: 56px; font-size: 17px; }
+.steps button .lbl-l { display: none; }
+.steps button { flex: 1 1 0; min-width: 0; padding: 8px 2px; font-size: 11px; }
+@media (min-width: 700px) { .steps button .lbl-s { display: none; } .steps button .lbl-l { display: inline; } }
+.stepnav .btn { min-height: 52px; font-size: 16px; }
+.tools { flex-wrap: wrap; row-gap: 8px; }
+
+/* ----- À traiter : éléments à vérifier, fuites, comparaison en colonnes ----- */
+.issues { display: grid; gap: 10px; }
+.card.issue { padding: 12px 14px; }
+.card.issue.ko { border-color: color-mix(in srgb, var(--danger) 55%, var(--line)); background: color-mix(in srgb, var(--danger) 6%, var(--surface)); }
+.card.issue.warn { border-color: color-mix(in srgb, #D9A441 60%, var(--line)); }
+.card.issue.ok { display: flex; gap: 10px; align-items: center; color: var(--ink); }
+.card.issue.ok svg { width: 22px; height: 22px; stroke: var(--teal); fill: none; stroke-width: 3; flex: none; }
+.issue-term { font: 600 18px/1.3 var(--serif); color: var(--ink); }
+.issue-ctx { background: var(--bg); border-radius: 10px; padding: 8px 10px; font-size: 14px; margin: 6px 0; word-break: break-word; }
+.issue-ctx mark, mark.flash-mark { background: #FFE08A; color: inherit; border-radius: 4px; padding: 0 2px; }
+.issue-acts .btn { padding-left: 10px; padding-right: 10px; }
+.issue-acts { flex-wrap: wrap; }
+.pgrid { display: grid; gap: 14px; margin-top: 12px; }
+@media (min-width: 1000px) {
+  .pgrid { grid-template-columns: minmax(0, 1fr) 360px; align-items: start; }
+  .pgrid .pmain { order: 1; } .pgrid .pside { order: 2; position: sticky; top: 12px; max-height: calc(100dvh - 24px); overflow: auto; padding-right: 2px; }
+  .pgrid .pview { max-height: calc(100dvh - 260px); overflow: auto; }
+}
+
+/* ----- Ordinateur : comparaison Original | Corrigé | Protégé en colonnes ----- */
+.cmp3 { display: grid; gap: 14px; grid-template-columns: 1fr; }
+@media (min-width: 1000px) {
+  .cmp3 { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; }
+  .cmp3 .cmp-text, .cmp3 textarea { min-height: 52dvh; max-height: calc(100dvh - 330px); overflow: auto; }
+  .pane-main .view.fiche-wide { max-width: none; padding-left: 28px; padding-right: 28px; }
+  .split:has(.fiche-wide) { grid-template-columns: minmax(0, 1fr); }
+  .split:has(.fiche-wide) .pane-list { display: none; }
+}
+
+/* cibles tactiles confortables (iPhone) */
+.sec-head a, .sec-head button, .note a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 6px; }
+.crumbs button { min-height: 40px; }
+
+/* ----- Coffre : bouton « Verrouiller » et nom d'espace ----- */
+.lock-slot { display: none; }
+.lock-home { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; }
+.lock-home .hint { margin: 0; }
+@media (min-width: 1000px) {
+  .lock-slot:not([hidden]) { display: grid; gap: 8px; position: absolute; left: 20px; right: 20px; bottom: 22px; }
+  .lock-space { font-size: 12.5px; color: var(--muted); text-align: center; overflow-wrap: anywhere; }
+  .lock-home { display: none; }
+}
